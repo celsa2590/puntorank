@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .hero {
+      margin-bottom: 28px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 46px;
+      font-weight: 900;
+    }
+
+    .subtitle {
+      color: #bbb;
+      margin-top: 8px;
+      max-width: 520px;
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 24px 0;
+    }
+
+    .btn {
+      background: #8dff9f;
+      color: #111;
+      padding: 12px 16px;
+      border-radius: 14px;
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    .btn.secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+
+    .section-title {
+      color: #8dff9f;
+      margin-top: 28px;
+    }
+
+    .ranking-card {
+      background: rgba(26, 26, 26, 0.92);
+      border: 1px solid #333;
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 12px;
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .position {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: #2a2a2a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+    }
+
+    .top1 .position {
+      background: #ffd700;
+      color: #111;
+    }
+
+    .top2 .position {
+      background: #c0c0c0;
+      color: #111;
+    }
+
+    .top3 .position {
+      background: #cd7f32;
+      color: #111;
+    }
+
+    .name {
+      font-weight: 900;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .club {
+      color: #aaa;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .rating {
+      color: #8dff9f;
+      font-size: 24px;
+      font-weight: 900;
+      text-align: right;
+    }
+
+    @media (max-width: 600px) {
+      .brand {
+        font-size: 38px;
+      }
+
+      .ranking-card {
+        grid-template-columns: 40px 1fr;
+      }
+
+      .rating {
+        grid-column: 2;
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <section class="hero">
+    <div class="brand">PuntoRank</div>
+    <div class="subtitle">
+      Ranking validado de jugadores de pádel. Registra partidos, mide tu nivel y compite en el ranking del club.
+    </div>
+
+    <div class="actions">
+      <a class="btn" href="ranking.html">Ver ranking completo</a>
+      <a class="btn secondary" href="club-admin.html">Panel clubes</a>
+      <a class="btn secondary" href="player-profile.html?id=1">Perfil demo</a>
+    </div>
+  </section>
+
+  <h2 class="section-title">🏆 Top 5 jugadores</h2>
+  <div id="topContainer">Cargando top 5...</div>
+
+<script>
+  const API_URL = "https://puntorank-backend.onrender.com";
+
+  async function loadTopFive() {
+    const container = document.getElementById("topContainer");
+
+    try {
+      const response = await fetch(`${API_URL}/ranking?club_id=1`);
+
+      if (!response.ok) {
+        throw new Error(`Error API: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const topFive = data.slice(0, 5);
+
+      container.innerHTML = "";
+
+      if (topFive.length === 0) {
+        container.innerHTML = "Aún no hay jugadores en el ranking.";
+        return;
+      }
+
+      topFive.forEach((player, index) => {
+        const card = document.createElement("div");
+
+        let topClass = "";
+        if (index === 0) topClass = "top1";
+        if (index === 1) topClass = "top2";
+        if (index === 2) topClass = "top3";
+
+        card.className = `ranking-card ${topClass}`;
+
+        card.innerHTML = `
+          <div class="position">${index + 1}</div>
+
+          <div>
+            <div class="name" onclick="goToProfile(${player.player_id})">
+              ${index === 0 ? "👑 " : ""}${player.player_name}
+            </div>
+            <div class="club">${player.club_name || "Club no asignado"}</div>
+          </div>
+
+          <div class="rating">${player.rating}</div>
+        `;
+
+        container.appendChild(card);
+      });
+
+    } catch (error) {
+      console.error(error);
+      container.innerHTML = "Error cargando top 5.";
+    }
+  }
+
+  function goToProfile(playerId) {
+    window.location.href = `player-profile.html?id=${playerId}`;
+  }
+
+  loadTopFive();
+</script>
+
+</body>
+</html>
