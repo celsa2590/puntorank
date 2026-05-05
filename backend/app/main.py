@@ -511,7 +511,7 @@ def dispute_match(match_id: int, player_id: int):
 
 
 @app.get("/ranking")
-def get_ranking(club_id: int | None = None):
+def get_ranking(club_id: int | None = None, gender: str | None = None):
     if club_id is None:
         query = """
             SELECT
@@ -524,9 +524,10 @@ def get_ranking(club_id: int | None = None):
             FROM player_ratings pr
             JOIN players p ON p.id = pr.player_id
             LEFT JOIN clubs c ON c.id = p.club_id
+            WHERE (%s IS NULL OR p.gender = %s)
             ORDER BY pr.rating DESC, pr.matches_count DESC, p.name ASC;
         """
-        params = []
+        params = [gender, gender]
     else:
         query = """
             SELECT
@@ -542,12 +543,13 @@ def get_ranking(club_id: int | None = None):
             JOIN matches m ON m.id = mp.match_id
             LEFT JOIN clubs c ON c.id = p.club_id
             WHERE m.club_id = %s
+              AND (%s IS NULL OR p.gender = %s)
               AND m.status IN ('confirmed', 'approved')
               AND m.rating_processed = TRUE
             GROUP BY p.id, p.name, c.name, pr.rating, p.is_registered
             ORDER BY pr.rating DESC, matches_count DESC, p.name ASC;
         """
-        params = [club_id]
+        params = [club_id, gender, gender]
 
     with get_conn() as conn:
         with conn.cursor() as cur:

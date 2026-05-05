@@ -140,66 +140,72 @@
     <div class="actions">
       <a class="btn" href="ranking.html">Ver ranking completo</a>
       <a class="btn secondary" href="club-admin.html">Panel clubes</a>
-      <a class="btn secondary" href="player-profile.html?id=1">Perfil demo</a>
     </div>
   </section>
 
-  <h2 class="section-title">🏆 Top 5 jugadores</h2>
-  <div id="topContainer">Cargando top 5...</div>
+  <h2 class="section-title">🏆 Top 5 Femenino</h2>
+  <div id="topFemenino"></div>
+
+  <h2 class="section-title">🏆 Top 5 Masculino</h2>
+  <div id="topMasculino"></div>
+
+<script>
 
 <script>
   const API_URL = "https://puntorank-backend.onrender.com";
 
   async function loadTopFive() {
-    const container = document.getElementById("topContainer");
-
     try {
-      const response = await fetch(`${API_URL}/ranking?club_id=1`);
+      const femenino = await fetch(`${API_URL}/ranking?club_id=1&gender=femenino`);
+      const masculino = await fetch(`${API_URL}/ranking?club_id=1&gender=masculino`);
 
-      if (!response.ok) {
-        throw new Error(`Error API: ${response.status}`);
-      }
+      const dataF = await femenino.json();
+      const dataM = await masculino.json();
 
-      const data = await response.json();
-      const topFive = data.slice(0, 5);
-
-      container.innerHTML = "";
-
-      if (topFive.length === 0) {
-        container.innerHTML = "Aún no hay jugadores en el ranking.";
-        return;
-      }
-
-      topFive.forEach((player, index) => {
-        const card = document.createElement("div");
-
-        let topClass = "";
-        if (index === 0) topClass = "top1";
-        if (index === 1) topClass = "top2";
-        if (index === 2) topClass = "top3";
-
-        card.className = `ranking-card ${topClass}`;
-
-        card.innerHTML = `
-          <div class="position">${index + 1}</div>
-
-          <div>
-            <div class="name" onclick="goToProfile(${player.player_id})">
-              ${index === 0 ? "👑 " : ""}${player.player_name}
-            </div>
-            <div class="club">${player.club_name || "Club no asignado"}</div>
-          </div>
-
-          <div class="rating">${player.rating}</div>
-        `;
-
-        container.appendChild(card);
-      });
+      renderTop(dataF.slice(0, 5), "topFemenino");
+      renderTop(dataM.slice(0, 5), "topMasculino");
 
     } catch (error) {
       console.error(error);
-      container.innerHTML = "Error cargando top 5.";
+      document.getElementById("topFemenino").innerHTML = "Error cargando ranking femenino.";
+      document.getElementById("topMasculino").innerHTML = "Error cargando ranking masculino.";
     }
+  }
+
+  function renderTop(players, containerId) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = "";
+
+    if (players.length === 0) {
+      container.innerHTML = "Sin datos.";
+      return;
+    }
+
+    players.forEach((player, index) => {
+      const card = document.createElement("div");
+
+      let topClass = "";
+      if (index === 0) topClass = "top1";
+      if (index === 1) topClass = "top2";
+      if (index === 2) topClass = "top3";
+
+      card.className = `ranking-card ${topClass}`;
+
+      card.innerHTML = `
+        <div class="position">${index + 1}</div>
+
+        <div>
+          <div class="name" onclick="goToProfile(${player.player_id})">
+            ${index === 0 ? "👑 " : ""}${player.player_name}
+          </div>
+          <div class="club">${player.club_name || "Club no asignado"}</div>
+        </div>
+
+        <div class="rating">${player.rating}</div>
+      `;
+
+      container.appendChild(card);
+    });
   }
 
   function goToProfile(playerId) {
@@ -207,6 +213,8 @@
   }
 
   loadTopFive();
+</script>
+
 </script>
 
 </body>
