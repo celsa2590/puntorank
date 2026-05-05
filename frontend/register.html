@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Registro</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 42px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #bbb;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 20px;
+      max-width: 520px;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      color: #ccc;
+      font-size: 14px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    button {
+      margin-top: 22px;
+      width: 100%;
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 14px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .message {
+      margin-top: 16px;
+      color: #8dff9f;
+      font-weight: bold;
+    }
+
+    .error {
+      color: #ff6b6b;
+    }
+
+    a {
+      color: #8dff9f;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="brand">PuntoRank</div>
+  <div class="subtitle">Crea tu perfil para aparecer en el ranking validado del club.</div>
+
+  <div class="card">
+    <form id="registerForm">
+      <label>Nombre y apellido</label>
+      <input type="text" id="name" required placeholder="Ej: Celsa Sánchez">
+
+      <label>Email</label>
+      <input type="email" id="email" required placeholder="tu@email.com">
+
+      <label>Club principal</label>
+      <select id="club" required>
+        <option value="">Cargando clubes...</option>
+      </select>
+
+      <label>Género</label>
+      <select id="gender" required>
+        <option value="">Selecciona</option>
+        <option value="femenino">Femenino</option>
+        <option value="masculino">Masculino</option>
+      </select>
+
+      <label>Categoría</label>
+      <select id="category" required>
+        <option value="">Selecciona</option>
+        <option value="6ta">6ta</option>
+        <option value="5ta">5ta</option>
+        <option value="4ta">4ta</option>
+        <option value="3era">3era</option>
+        <option value="2da">2da</option>
+        <option value="1era">1era</option>
+      </select>
+
+      <label>Lado de juego</label>
+      <select id="side" required>
+        <option value="">Selecciona</option>
+        <option value="drive">Drive</option>
+        <option value="reves">Revés</option>
+        <option value="ambos">Ambos</option>
+      </select>
+
+      <button type="submit">Crear perfil</button>
+    </form>
+
+    <div id="message" class="message"></div>
+  </div>
+
+<script>
+  const API_URL = "https://puntorank-backend.onrender.com";
+
+  async function loadClubs() {
+    const clubSelect = document.getElementById("club");
+
+    try {
+      const response = await fetch(`${API_URL}/clubs`);
+      const clubs = await response.json();
+
+      clubSelect.innerHTML = `<option value="">Selecciona tu club</option>`;
+
+      clubs.forEach(club => {
+        const option = document.createElement("option");
+        option.value = club.id;
+        option.textContent = club.name;
+        clubSelect.appendChild(option);
+      });
+
+    } catch (error) {
+      console.error(error);
+      clubSelect.innerHTML = `<option value="">Error cargando clubes</option>`;
+    }
+  }
+
+  document.getElementById("registerForm").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    const message = document.getElementById("message");
+    message.className = "message";
+    message.innerHTML = "Creando perfil...";
+
+    const payload = {
+      name: document.getElementById("name").value.trim(),
+      email: document.getElementById("email").value.trim(),
+      club_id: parseInt(document.getElementById("club").value),
+      gender: document.getElementById("gender").value,
+      category: document.getElementById("category").value,
+      side: document.getElementById("side").value
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error API: ${response.status}`);
+      }
+
+      const player = await response.json();
+
+      message.innerHTML = `
+        Perfil creado correctamente ✅<br>
+        <a href="player-profile.html?id=${player.id}">Ver perfil</a>
+      `;
+
+      document.getElementById("registerForm").reset();
+
+    } catch (error) {
+      console.error(error);
+      message.className = "message error";
+      message.innerHTML = "No se pudo crear el perfil. Revisa si el email ya existe.";
+    }
+  });
+
+  loadClubs();
+</script>
+
+</body>
+</html>
