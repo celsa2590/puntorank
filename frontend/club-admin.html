@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Panel Club</title>
+  <style>
+    body {
+      background: #111;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+
+    h1 {
+      color: #00ff9c;
+    }
+
+    .match-card {
+      background: #1c1c1c;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+
+    .teams {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 8px;
+    }
+
+    .score {
+      color: #00ff9c;
+      margin-bottom: 8px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+
+    .pending { background: #6b5b00; }
+    .approved { background: #006b3c; }
+    .confirmed { background: #005d8f; }
+    .rejected { background: #7a1e1e; }
+    .disputed { background: #7a3c00; }
+
+    button {
+      background: #00ff9c;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-right: 8px;
+      font-weight: bold;
+    }
+
+    button.reject {
+      background: #ff5f5f;
+    }
+
+.winner {
+  color: #00ff9c;
+  font-weight: bold;
+}
+
+.loser {
+  color: #999;
+}
+
+  </style>
+</head>
+<body>
+
+<h1>Panel del Club - Partidos</h1>
+
+<div id="matchesContainer">Cargando partidos...</div>
+
+<script>
+  const API_URL = "http://localhost:8000";
+  const CLUB_ID = 1;
+
+async function loadMatches() {
+  try {
+    const response = await fetch(`${API_URL}/club/${CLUB_ID}/matches`);
+
+    if (!response.ok) {
+      throw new Error(`Error API: ${response.status}`);
+    }
+
+    const matches = await response.json();
+
+    const container = document.getElementById("matchesContainer");
+    container.innerHTML = "";
+
+    if (matches.length === 0) {
+      container.innerHTML = "No hay partidos registrados.";
+      return;
+    }
+
+    for (const match of matches) {
+      const card = document.createElement("div");
+      card.className = "match-card";
+
+      const teamA = match.team_a ? match.team_a.join(" / ") : "Equipo A";
+      const teamB = match.team_b ? match.team_b.join(" / ") : "Equipo B";
+
+      const teamAClass = match.winning_team === "A" ? "winner" : "";
+      const teamBClass = match.winning_team === "B" ? "winner" : "";
+
+      let buttons = "";
+
+      if (
+        match.status === "pending" ||
+        match.status === "confirmed" ||
+        match.status === "disputed"
+      ) {
+        buttons = `
+          <button onclick="approveMatch(${match.id})">Aprobar</button>
+          <button class="reject" onclick="rejectMatch(${match.id})">Rechazar</button>
+        `;
+      }
+
+      // 🔥 NUEVO: traer delta
+      let deltaHtml = "";
+
+      if (match.status === "approved") {
+        const deltaResponse = await fetch(`${API_URL}/matches/${match.id}/rating-change`);
+        const deltas = await deltaResponse.json();
+
+        const deltasA = deltas.filter(d => d.team === "A");
+        const deltasB = deltas.filter(d => d.team === "B");
+
+        const formatDelta = d => {
+          const sign = d.delta > 0 ? "+" : "";
+          return `${d.name} ${sign}${d.delta.toFixed(0)}`;
+        };
+
+        deltaHtml = `
+          <div style="margin-top:10px;">
+            <div style="color:#00ff9c">${deltasA.map(formatDelta).join("<br>")}</div>
+            <div style="color:#ff6b6b; margin-top:6px;">${deltasB.map(formatDelta).join("<br>")}</div>
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="teams">
+          <div class="${teamAClass}">${teamA}</div>
+          <div>vs</div>
+          <div class="${teamBClass}">${teamB}</div>
+        </div>
+        <div class="score">Resultado: ${match.score || "Sin resultado"}</div>
+        <div>Tipo: ${match.match_type}</div>
+        <br>
+        <span class="status ${match.status}">${match.status}</span>
+        <br>
+        ${buttons}
+        ${deltaHtml}
+      `;
+
+      container.appendChild(card);
+    }
+
+  } catch (error) {
+    console.error(error);
+    document.getElementById("matchesContainer").innerHTML =
+      "Error cargando partidos. Revisa la consola.";
+  }
+}
+
+
+
+  async function approveMatch(matchId) {
+    await fetch(`${API_URL}/matches/${matchId}/approve`, {
+      method: "POST"
+    });
+    loadMatches();
+  }
+
+  async function rejectMatch(matchId) {
+    await fetch(`${API_URL}/matches/${matchId}/reject`, {
+      method: "POST"
+    });
+    loadMatches();
+  }
+
+  loadMatches();
+</script>
+
+</body>
+</html>

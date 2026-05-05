@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Ranking</title>
+  <style>
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+  color: white;
+  font-family: Arial, sans-serif;
+  padding: 20px;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.brand {
+  color: #8dff9f;
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+
+.subtitle {
+  color: #b7b7b7;
+  font-size: 15px;
+  margin-top: 6px;
+}
+
+.filters {
+  margin-bottom: 20px;
+}
+
+select {
+  width: 100%;
+  max-width: 360px;
+  background: #1a1a1a;
+  color: white;
+  border: 1px solid #333;
+  border-radius: 14px;
+  padding: 12px;
+  font-size: 15px;
+}
+
+.ranking-card {
+  background: rgba(26, 26, 26, 0.92);
+  border: 1px solid #333;
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 14px;
+  display: grid;
+  grid-template-columns: 50px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.ranking-card:hover {
+  transform: translateY(-2px);
+  border-color: #8dff9f;
+}
+
+.position {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 18px;
+}
+
+.top1 {
+  border-color: #ffd700;
+}
+
+.top2 {
+  border-color: #c0c0c0;
+}
+
+.top3 {
+  border-color: #cd7f32;
+}
+
+.top1 .position {
+  background: #ffd700;
+  color: #111;
+}
+
+.top2 .position {
+  background: #c0c0c0;
+  color: #111;
+}
+
+.top3 .position {
+  background: #cd7f32;
+  color: #111;
+}
+
+.player-name {
+  font-size: 19px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.player-name:hover {
+  color: #8dff9f;
+}
+
+.club-name {
+  color: #aaa;
+  margin-top: 4px;
+  font-size: 14px;
+}
+
+.badge {
+  display: inline-block;
+  margin-top: 8px;
+  background: #203c2d;
+  color: #8dff9f;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.rating-box {
+  text-align: right;
+}
+
+.rating {
+  color: #8dff9f;
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.matches {
+  color: #aaa;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.empty {
+  color: #aaa;
+  margin-top: 30px;
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  body {
+    padding: 16px;
+  }
+
+  .brand {
+    font-size: 34px;
+  }
+
+  .ranking-card {
+    grid-template-columns: 42px 1fr;
+    gap: 12px;
+  }
+
+  .rating-box {
+    grid-column: 2;
+    text-align: left;
+    margin-top: 6px;
+  }
+
+  .rating {
+    font-size: 24px;
+  }
+
+  .player-name {
+    font-size: 17px;
+  }
+}
+
+.ranking-card {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeInUp 0.4s ease forwards;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ranking-card:hover {
+  transform: translateY(-4px) scale(1.01);
+}
+
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="brand">PuntoRank</div>
+    <div class="subtitle">Ranking validado de jugadores de pádel</div>
+  </div>
+
+  <div class="filters">
+    <select id="rankingScope" onchange="loadRanking()">
+      <option value="1">Ranking Espacio Active</option>
+      <option value="global">Ranking Global</option>
+    </select>
+  </div>
+
+<div id="topWeekly"></div>
+
+  <div id="rankingContainer">Cargando ranking...</div>
+
+<script>
+  const API_URL = "http://localhost:8000";
+
+
+async function loadTopWeekly() {
+  try {
+    const response = await fetch(`${API_URL}/ranking/top-weekly`);
+    const data = await response.json();
+
+    if (!data) return;
+
+    document.getElementById("topWeekly").innerHTML = `
+      <div style="
+        background:#1a1a1a;
+        border:1px solid #333;
+        border-radius:20px;
+        padding:16px;
+        margin-bottom:16px;
+      ">
+        <div style="color:#8dff9f; font-weight:bold;">🔥 Top semanal</div>
+        <div style="font-size:20px; font-weight:900;">${data.name}</div>
+        <div style="color:#00ff9c;">+${Math.round(data.total_delta)} puntos</div>
+      </div>
+    `;
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+  async function loadRanking() {
+    const scope = document.getElementById("rankingScope").value;
+    const url = scope === "global"
+      ? `${API_URL}/ranking`
+      : `${API_URL}/ranking?club_id=${scope}`;
+
+    const container = document.getElementById("rankingContainer");
+    container.innerHTML = "Cargando ranking...";
+
+    try {
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Error API: ${response.status}`);
+      }
+
+      const data = await response.json();
+      container.innerHTML = "";
+
+      if (data.length === 0) {
+        container.innerHTML = `<div class="empty">Aún no hay jugadores en el ranking.</div>`;
+        return;
+      }
+
+
+
+for (const [index, player] of data.entries()) {
+  const card = document.createElement("div");
+
+  const streakResponse = await fetch(`${API_URL}/players/${player.player_id}/streak`);
+  const streakData = await streakResponse.json();
+
+  let streakHtml = "";
+  if (streakData.streak >= 3) {
+    streakHtml = `<div class="badge">🔥 ${streakData.streak} streak</div>`;
+  }
+
+  let topClass = "";
+  if (index === 0) topClass = "top1";
+  if (index === 1) topClass = "top2";
+  if (index === 2) topClass = "top3";
+
+  card.className = `ranking-card ${topClass}`;
+  card.style.animationDelay = `${index * 0.05}s`;
+
+  const verifiedBadge = player.is_registered
+    ? `<div class="badge">Perfil verificado</div>`
+    : `<div class="badge">Jugador pendiente</div>`;
+
+  card.innerHTML = `
+    <div class="position">${index + 1}</div>
+
+    <div>
+      <div class="player-name" onclick="goToProfile(${player.player_id})" style="cursor:pointer;">
+        ${player.player_name}
+      </div>
+      <div class="club-name">${player.club_name || "Club no asignado"}</div>
+      ${verifiedBadge}
+      ${streakHtml}
+    </div>
+
+    <div class="rating-box">
+      <div class="rating">${player.rating}</div>
+      <div class="matches">${player.matches_count} partidos</div>
+    </div>
+  `;
+
+  container.appendChild(card);
+}
+
+
+    } catch (error) {
+      console.error(error);
+      container.innerHTML = "Error cargando ranking. Revisa la consola.";
+    }
+  }
+
+
+function goToProfile(playerId) {
+  window.location.href = `player-profile.html?id=${playerId}`;
+}
+
+loadTopWeekly();
+loadRanking();
+
+</script>
+
+</body>
+</html>

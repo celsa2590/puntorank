@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Perfil Jugador</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      margin: 0;
+      background: #0f0f0f;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 36px;
+      font-weight: 900;
+      margin-bottom: 20px;
+    }
+
+    .profile-card, .history-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
+    }
+
+    .name {
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .rating {
+      color: #8dff9f;
+      font-size: 42px;
+      font-weight: 900;
+      margin-top: 12px;
+    }
+
+    .meta {
+      color: #aaa;
+      margin-top: 6px;
+    }
+
+    .delta-positive {
+      color: #00ff9c;
+      font-weight: bold;
+    }
+
+    .delta-negative {
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+
+    .history-row {
+      border-bottom: 1px solid #333;
+      padding: 12px 0;
+    }
+canvas {
+  margin-top: 12px;
+  max-height: 280px;
+}
+  </style>
+</head>
+<body>
+
+  <div class="brand">PuntoRank</div>
+
+  <div id="profileContainer">Cargando perfil...</div>
+
+<div class="history-card">
+  <h2>Evolución del rating</h2>
+  <canvas id="ratingChart"></canvas>
+</div>
+
+<script>
+  const API_URL = "http://localhost:8000";
+
+  const params = new URLSearchParams(window.location.search);
+  const PLAYER_ID = params.get("id") || 1;
+
+  async function loadProfile() {
+    try {
+      const response = await fetch(`${API_URL}/players/${PLAYER_ID}/profile`);
+
+      if (!response.ok) {
+        throw new Error(`Error API: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const player = data.player;
+      const history = data.history;
+
+      const clubs = player.clubs.map(c => c.club_name).join(", ");
+      const side = player.side || "No definido";
+
+// 🔥 calcular racha
+let streak = 0;
+for (let h of history) {
+  if (h.delta > 0) streak++;
+  else break;
+}
+
+let streakBadge = "";
+if (streak >= 3) {
+  streakBadge = `<div class="badge">🔥 ${streak} victorias seguidas</div>`;
+}
+
+// historial
+const historyHtml = history.length === 0
+  ? `<div class="meta">Aún no hay historial de rating.</div>`
+  : history.map(h => {
+      const deltaClass = h.delta >= 0 ? "delta-positive" : "delta-negative";
+      const sign = h.delta > 0 ? "+" : "";
+
+      return `
+        <div class="history-row">
+          <div>Match #${h.match_id}</div>
+          <div>
+            ${h.rating_before} → ${h.rating_after}
+            <span class="${deltaClass}">(${sign}${h.delta})</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+
+      document.getElementById("profileContainer").innerHTML = `
+        <div class="profile-card">
+          <div class="name">${player.name}</div>
+          <div class="meta">Lado: ${side}</div>
+          <div class="meta">Clubes: ${clubs || "Sin club"}</div>
+          ${streakBadge}
+          <div class="rating">${player.rating}</div>
+          <div class="meta">${player.matches_count} partidos jugados</div>
+        </div>
+
+        <div class="history-card">
+          <h2>Historial de rating</h2>
+          ${historyHtml}
+        </div>
+      `;
+renderRatingChart(history);
+
+    } catch (error) {
+      console.error(error);
+      document.getElementById("profileContainer").innerHTML =
+        "Error cargando perfil. Revisa la consola.";
+    }
+  }
+
+  loadProfile();
+
+function renderRatingChart(history) {
+  const canvas = document.getElementById("ratingChart");
+
+  if (!canvas || history.length === 0) return;
+
+  const orderedHistory = [...history].reverse();
+
+  const labels = orderedHistory.map(h => `Match ${h.match_id}`);
+
+  const ratings = orderedHistory.map(h => h.rating_after);
+
+  const pointColors = orderedHistory.map(h => 
+    h.delta >= 0 ? "#00ff9c" : "#ff6b6b"
+  );
+
+  new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: "Rating",
+        data: ratings,
+        tension: 0.35,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: pointColors,
+        borderColor: "#8dff9f"
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const index = context.dataIndex;
+              const delta = orderedHistory[index].delta;
+              const sign = delta > 0 ? "+" : "";
+              return `Rating: ${context.raw} (${sign}${delta.toFixed(0)})`;
+            }
+          }
+        },
+        legend: {
+          labels: { color: "#ffffff" }
+        }
+  },
+      
+      scales: {
+        x: {
+          ticks: { color: "#aaaaaa" },
+          grid: { color: "#333333" }
+        },
+        y: {
+          ticks: { color: "#aaaaaa" },
+          grid: { color: "#333333" }
+        }
+      }
+    }
+  });
+}
+
+</script>
+
+</body>
+</html>
