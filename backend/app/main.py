@@ -183,7 +183,15 @@ class MatchReport(BaseModel):
     score: str
     winning_team: str
     players: list[MatchPlayer]
+    category: str | None = None
 
+class PlayerRegister(BaseModel):
+    name: str
+    email: str
+    club_id: int | None = None
+    gender: str | None = None
+    side: str | None = None
+    category: str | None = None
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -317,9 +325,9 @@ def report_match(match: MatchReport):
             cur.execute(
                 """
                 INSERT INTO matches 
-                    (club_id, event_id, match_type, status, created_by, played_at)
+                    (club_id, event_id, match_type, status, created_by, played_at, category)
                 VALUES 
-                    (%s, %s, %s, 'pending', %s, COALESCE(%s::timestamp, NOW()))
+                    (%s, %s, %s, 'pending', %s, COALESCE(%s::timestamp, NOW()), %s)
                 RETURNING *;
                 """,
                 (
@@ -328,6 +336,7 @@ def report_match(match: MatchReport):
                     match.match_type,
                     match.created_by,
                     match.played_at,
+                    match.category
                 ),
             )
             new_match = cur.fetchone()
@@ -511,7 +520,7 @@ def dispute_match(match_id: int, player_id: int):
 
 
 @app.get("/ranking")
-def get_ranking(club_id: int | None = None, gender: str | None = None):
+def get_ranking(club_id: int | None = None, gender: str | None = None, category: str | None = None):
     if club_id is None:
         query = """
             SELECT
@@ -526,6 +535,13 @@ def get_ranking(club_id: int | None = None, gender: str | None = None):
             LEFT JOIN clubs c ON c.id = p.club_id
             WHERE (%s IS NULL OR p.gender = %s)
             ORDER BY pr.rating DESC, pr.matches_count DESC, p.name ASC;
+            AND (%s IS NULL OR EXISTS (
+                SELECT 1
+                FROM matches m
+                JOIN match_players mp ON mp.match_id = m.id
+                WHERE mp.player_id = p.id
+                  AND m.category = %s
+            ))
         """
         params = [gender, gender]
     else:
@@ -684,3 +700,40 @@ def top_weekly():
 
             result = cur.fetchone()
             return result
+
+@app.post("/register")
+def register_player(player: PlayerRegister):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO players (name, email, club_id, gender, side, category, is_registered)
+                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+                RETURNING *;
+                """,
+                (
+                    player.name,
+                    player.email,
+                    player.club_id,
+                    player.gender,
+                    player.side,
+                    player.category,
+                ),
+            )
+
+            new_player = cur.fetchone()
+
+            if player.club_id is not None:
+                cur.execute(
+                    """
+                    INSERT INTO player_clubs (player_id, club_id, is_home_club)
+                    VALUES (%s, %s, TRUE)
+                    ON CONFLICT (player_id, club_id) DO NOTHING;
+                    """,
+                    (new_player["id"], player.club_id),
+                )
+
+            ensure_player_rating(cur, new_player["id"])
+
+            conn.commit()
+            return new_player

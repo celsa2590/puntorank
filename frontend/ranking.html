@@ -206,12 +206,30 @@ select {
     <div class="subtitle">Ranking validado de jugadores de pádel</div>
   </div>
 
-  <div class="filters">
-    <select id="rankingScope" onchange="loadRanking()">
-      <option value="1">Ranking Espacio Active</option>
-      <option value="global">Ranking Global</option>
-    </select>
-  </div>
+
+<div class="filters">
+  <select id="rankingScope" onchange="loadRanking()">
+    <option value="1">Espacio Active</option>
+    <option value="global">Global</option>
+  </select>
+
+  <select id="genderFilter" onchange="loadRanking()">
+    <option value="">Todos</option>
+    <option value="femenino">Femenino</option>
+    <option value="masculino">Masculino</option>
+  </select>
+
+  <select id="categoryFilter" onchange="loadRanking()">
+    <option value="">Todas las categorías</option>
+    <option value="6ta">6ta</option>
+    <option value="5ta">5ta</option>
+    <option value="4ta">4ta</option>
+    <option value="3era">3era</option>
+    <option value="2da">2da</option>
+    <option value="1era">1era</option>
+  </select>
+</div>
+
 
 <div id="topWeekly"></div>
 
@@ -247,10 +265,29 @@ async function loadTopWeekly() {
 }
 
   async function loadRanking() {
-    const scope = document.getElementById("rankingScope").value;
-    const url = scope === "global"
-      ? `${API_URL}/ranking`
-      : `${API_URL}/ranking?club_id=${scope}`;
+
+const scope = document.getElementById("rankingScope").value;
+const gender = document.getElementById("genderFilter").value;
+const category = document.getElementById("categoryFilter").value;
+
+const params = new URLSearchParams();
+
+if (scope !== "global") {
+  params.append("club_id", scope);
+}
+
+if (gender) {
+  params.append("gender", gender);
+}
+
+if (category) {
+  params.append("category", category);
+}
+
+const queryString = params.toString();
+const url = queryString
+  ? `${API_URL}/ranking?${queryString}`
+  : `${API_URL}/ranking`;    
 
     const container = document.getElementById("rankingContainer");
     container.innerHTML = "Cargando ranking...";
