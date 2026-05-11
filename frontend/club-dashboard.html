@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Panel Club</title>
+</head>
+<body style="background:#0f0f0f;color:white;font-family:Arial;padding:24px;">
+
+  <h1 style="color:#8dff9f;">Panel del Club</h1>
+  <p id="clubName"></p>
+
+  <div>
+    <a href="club-admin.html">✅ Validar partidos amistosos</a><br><br>
+    <a href="#">🎾 Crear Americano</a><br><br>
+    <a href="#">📅 Crear Liga</a><br><br>
+    <a href="#">🏆 Crear Torneo</a><br><br>
+    <a href="#">📜 Historial</a><br><br>
+    <button onclick="logout()">Cerrar sesión</button>
+  </div>
+
+<script>
+  const clubId = localStorage.getItem("club_id");
+  const clubName = localStorage.getItem("club_name");
+
+  if (!clubId) {
+    window.location.href = "club-login.html";
+  }
+
+  document.getElementById("clubName").innerText = `Club: ${clubName}`;
+
+  function logout() {
+    localStorage.removeItem("club_id");
+    localStorage.removeItem("club_name");
+    window.location.href = "club-login.html";
+  }
+</script>
+
+</body>
+</html>
