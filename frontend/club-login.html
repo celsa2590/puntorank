@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Login Club</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 42px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #bbb;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 20px;
+      max-width: 420px;
+    }
+
+    label {
+      display: block;
+      margin-top: 14px;
+      margin-bottom: 6px;
+      color: #ccc;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    button {
+      margin-top: 22px;
+      width: 100%;
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 14px;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .error {
+      margin-top: 16px;
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="brand">PuntoRank</div>
+  <div class="subtitle">Ingreso para clubes</div>
+
+  <div class="card">
+    <form id="loginForm">
+      <label>Usuario</label>
+      <input type="text" id="username" required placeholder="espacioactive">
+
+      <label>Clave</label>
+      <input type="password" id="password" required placeholder="1234">
+
+      <button type="submit">Ingresar</button>
+    </form>
+
+    <div id="message" class="error"></div>
+  </div>
+
+<script>
+  const API_URL = "https://puntorank-backend.onrender.com";
+
+  document.getElementById("loginForm").addEventListener("submit", async function(event) {
+    event.preventDefault();
+
+    const message = document.getElementById("message");
+    message.innerHTML = "";
+
+    const payload = {
+      username: document.getElementById("username").value.trim(),
+      password: document.getElementById("password").value.trim()
+    };
+
+    try {
+      const response = await fetch(`${API_URL}/club/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error("Login inválido");
+      }
+
+      const club = await response.json();
+
+      localStorage.setItem("club_id", club.id);
+      localStorage.setItem("club_name", club.name);
+
+      window.location.href = "club-dashboard.html";
+
+    } catch (error) {
+      console.error(error);
+      message.innerHTML = "Usuario o clave incorrectos.";
+    }
+  });
+</script>
+
+</body>
+</html>

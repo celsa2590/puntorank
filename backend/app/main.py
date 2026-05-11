@@ -201,6 +201,11 @@ class PlayerRegister(BaseModel):
     side: str | None = None
     category: str | None = None
 
+class ClubLogin(BaseModel):
+    username: str
+    password: str
+
+
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
         ensure_player_rating(cur, player_data.player_id)
@@ -782,3 +787,28 @@ def register_player(player: PlayerRegister):
 
             conn.commit()
             return new_player
+
+
+@app.post("/club/login")
+def club_login(login: ClubLogin):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name
+                FROM clubs
+                WHERE username = %s
+                  AND password = %s;
+                """,
+                (login.username, login.password),
+            )
+
+            club = cur.fetchone()
+
+            if not club:
+                raise HTTPException(status_code=401, detail="Usuario o clave incorrectos")
+
+            return club
+
+
+
