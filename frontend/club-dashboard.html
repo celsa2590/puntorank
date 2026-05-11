@@ -3,20 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <title>PuntoRank - Panel Club</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 38px;
+      font-weight: 900;
+    }
+
+    .subtitle {
+      color: #bbb;
+      margin-top: 6px;
+      margin-bottom: 24px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      max-width: 1000px;
+    }
+
+    .card {
+      background: rgba(26, 26, 26, 0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 18px;
+      text-decoration: none;
+      color: white;
+      transition: 0.15s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-3px);
+      border-color: #8dff9f;
+    }
+
+    .icon {
+      font-size: 30px;
+      margin-bottom: 12px;
+    }
+
+    .title {
+      font-size: 20px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .desc {
+      color: #aaa;
+      line-height: 1.4;
+      font-size: 14px;
+    }
+
+    .logout {
+      margin-top: 24px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: white;
+      padding: 12px 16px;
+      border-radius: 14px;
+      cursor: pointer;
+      font-weight: 800;
+    }
+  </style>
 </head>
-<body style="background:#0f0f0f;color:white;font-family:Arial;padding:24px;">
+<body>
 
-  <h1 style="color:#8dff9f;">Panel del Club</h1>
-  <p id="clubName"></p>
+  <div class="brand">Panel PuntoRank</div>
+  <div class="subtitle" id="clubName"></div>
 
-  <div>
-    <a href="club-admin.html">✅ Validar partidos amistosos</a><br><br>
-    <a href="#">🎾 Crear Americano</a><br><br>
-    <a href="#">📅 Crear Liga</a><br><br>
-    <a href="#">🏆 Crear Torneo</a><br><br>
-    <a href="#">📜 Historial</a><br><br>
-    <button onclick="logout()">Cerrar sesión</button>
+  <div class="grid">
+    <a class="card" href="club-admin.html">
+      <div class="icon">✅</div>
+      <div class="title">Validar partidos amistosos</div>
+      <div class="desc">Revisa resultados pendientes. Al aprobarlos, impactan el ranking y pasan al histórico.</div>
+    </a>
+
+    <a class="card" href="#">
+      <div class="icon">🎾</div>
+      <div class="title">Crear Americano</div>
+      <div class="desc">Crea americanos por categoría, canchas y duración. Genera partidos y tabla en vivo.</div>
+    </a>
+
+    <a class="card" href="#">
+      <div class="icon">📅</div>
+      <div class="title">Crear Liga</div>
+      <div class="desc">Define jugadores, categoría, días y horarios para generar una liga interna.</div>
+    </a>
+
+    <a class="card" href="#">
+      <div class="icon">🏆</div>
+      <div class="title">Crear Torneo</div>
+      <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
+    </a>
+
+    <a class="card" href="#">
+      <div class="icon">📜</div>
+      <div class="title">Historial</div>
+      <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
+    </a>
   </div>
+
+  <button class="logout" onclick="logout()">Cerrar sesión</button>
 
 <script>
   const clubId = localStorage.getItem("club_id");

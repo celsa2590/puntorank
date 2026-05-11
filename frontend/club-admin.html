@@ -81,7 +81,11 @@
 
 <script>
   const API_URL = "https://puntorank-backend.onrender.com";
-  const CLUB_ID = 1;
+  const CLUB_ID = localStorage.getItem("club_id");
+
+  if (!CLUB_ID) {
+    window.location.href = "club-login.html";
+  }
 
 async function loadMatches() {
   try {
