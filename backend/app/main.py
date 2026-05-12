@@ -419,10 +419,18 @@ def get_club_matches(club_id: int):
                 LEFT JOIN club_events ce ON ce.id = m.event_id
 
                 WHERE m.club_id = %s
+                  AND m.status IN ('pending', 'confirmed', 'disputed')
 
                 GROUP BY m.id, m.status, m.match_type, m.played_at, mr.score, mr.winning_team, ce.name
 
-                ORDER BY m.played_at DESC;
+                ORDER BY
+                  CASE m.status
+                    WHEN 'pending' THEN 1
+                    WHEN 'disputed' THEN 2
+                    WHEN 'confirmed' THEN 3
+                    ELSE 4
+                  END,
+                  m.played_at DESC;
                 """,
                 (club_id,),
             )
