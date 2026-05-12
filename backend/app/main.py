@@ -1049,8 +1049,10 @@ def toggle_americano_player_paid(americano_player_id: int):
 
 @app.post("/americanos/{americano_id}/generate-rounds")
 def generate_americano_rounds(americano_id: int):
+
     with get_conn() as conn:
         with conn.cursor() as cur:
+
             cur.execute(
                 """
                 SELECT id, courts, duration_minutes
@@ -1059,10 +1061,14 @@ def generate_americano_rounds(americano_id: int):
                 """,
                 (americano_id,),
             )
+
             americano = cur.fetchone()
 
             if not americano:
-                raise HTTPException(status_code=404, detail="Americano no encontrado")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Americano no encontrado",
+                )
 
             cur.execute(
                 """
@@ -1085,7 +1091,7 @@ def generate_americano_rounds(americano_id: int):
             if len(pairs) > 6:
                 raise HTTPException(
                     status_code=400,
-                    detail="Por ahora este generador soporta hasta 6 parejas. Luego agregaremos grupos + playoffs.",
+                    detail="Por ahora este generador soporta hasta 6 parejas",
                 )
 
             # limpiar rondas anteriores
@@ -1097,83 +1103,95 @@ def generate_americano_rounds(americano_id: int):
                 (americano_id,),
             )
 
+            # ROUND ROBIN REAL
+            pairs_work = pairs.copy()
 
+            # si es impar agregamos descanso
+            if len(pairs_work) % 2 != 0:
+                pairs_work.append(None)
 
-# round-robin real: una pareja juega solo una vez por ronda
-pairs_work = pairs.copy()
+            n = len(pairs_work)
 
-# Si hubiera número impar de parejas, agregamos descanso
-if len(pairs_work) % 2 != 0:
-    pairs_work.append(None)
+            rounds_needed = n - 1
+            courts = int(americano["courts"])
+            matches_per_round = n // 2
 
-n = len(pairs_work)
-rounds_needed = n - 1
-courts = int(americano["courts"])
-matches_per_round = n // 2
-total_matches = (len(pairs) * (len(pairs) - 1)) // 2
-
-recommended_minutes = int(americano["duration_minutes"] / rounds_needed)
-
-rounds = []
-
-for round_number in range(1, rounds_needed + 1):
-    round_matches = []
-
-    for i in range(matches_per_round):
-        pair_a = pairs_work[i]
-        pair_b = pairs_work[n - 1 - i]
-
-        # Si hay descanso, no se crea match
-        if pair_a is not None and pair_b is not None:
-            round_matches.append((pair_a, pair_b))
-
-    rounds.append(round_matches)
-
-    # rotación round-robin manteniendo fijo el primero
-    pairs_work = [pairs_work[0]] + [pairs_work[-1]] + pairs_work[1:-1]
-
-
-matches_created = 0
-
-for round_index, round_matches in enumerate(rounds, start=1):
-
-    for court_index, (pair_a, pair_b) in enumerate(round_matches, start=1):
-
-        if court_index > courts:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Necesitas al menos {matches_per_round} canchas para que nadie descanse."
+            recommended_minutes = int(
+                americano["duration_minutes"] / rounds_needed
             )
 
-        cur.execute(
-            """
-            INSERT INTO americano_rounds
-                (americano_id, round_number, court_number)
-            VALUES
-                (%s, %s, %s)
-            RETURNING id;
-            """,
-            (americano_id, round_index, court_index),
-        )
+            rounds = []
 
-        round_row = cur.fetchone()
-        round_id = round_row["id"]
+            for round_number in range(1, rounds_needed + 1):
 
-        cur.execute(
-            """
-            INSERT INTO americano_matches
-                (round_id, pair_a_id, pair_b_id)
-            VALUES
-                (%s, %s, %s);
-            """,
-            (round_id, pair_a, pair_b),
-        )
+                round_matches = []
 
-        matches_created += 1
+                for i in range(matches_per_round):
 
+                    pair_a = pairs_work[i]
+                    pair_b = pairs_work[n - 1 - i]
 
+                    # evitar descanso
+                    if pair_a is not None and pair_b is not None:
+                        round_matches.append((pair_a, pair_b))
 
+                rounds.append(round_matches)
 
+                # rotación
+                pairs_work = (
+                    [pairs_work[0]]
+                    + [pairs_work[-1]]
+                    + pairs_work[1:-1]
+                )
+
+            matches_created = 0
+
+            for round_index, round_matches in enumerate(rounds, start=1):
+
+                for court_index, (pair_a, pair_b) in enumerate(
+                    round_matches,
+                    start=1,
+                ):
+
+                    if court_index > courts:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Necesitas al menos {matches_per_round} canchas",
+                        )
+
+                    cur.execute(
+                        """
+                        INSERT INTO americano_rounds
+                            (americano_id, round_number, court_number)
+                        VALUES
+                            (%s, %s, %s)
+                        RETURNING id;
+                        """,
+                        (
+                            americano_id,
+                            round_index,
+                            court_index,
+                        ),
+                    )
+
+                    round_row = cur.fetchone()
+                    round_id = round_row["id"]
+
+                    cur.execute(
+                        """
+                        INSERT INTO americano_matches
+                            (round_id, pair_a_id, pair_b_id)
+                        VALUES
+                            (%s, %s, %s);
+                        """,
+                        (
+                            round_id,
+                            pair_a,
+                            pair_b,
+                        ),
+                    )
+
+                    matches_created += 1
 
             cur.execute(
                 """
