@@ -315,7 +315,7 @@ def apply_rating_bonus(cur, player_id: int, bonus: float, source_type: str, sour
         INSERT INTO rating_history
             (player_id, match_id, source_type, source_id, rating_before, rating_after, delta)
         VALUES
-            (%s, NULL, %s, %s, %s %s, %s);
+            (%s, NULL, %s, %s, %s, %s, %s);
         """,
         (player_id, source_type, source_id, before, after, bonus),
     )
