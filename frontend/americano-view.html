@@ -133,6 +133,10 @@ input, select {
 
 </div>
 
+<div class="card">
+  <h2>Tabla de posiciones</h2>
+  <div id="standingsList">Cargando tabla...</div>
+</div>
 <script>
 
   const API_URL = "https://puntorank-backend.onrender.com";
@@ -194,6 +198,30 @@ input, select {
       </div>
     `).join("");
   }
+
+
+async function loadStandings() {
+  const response = await fetch(`${API_URL}/americanos/${americanoId}/standings`);
+  const standings = await response.json();
+
+  const list = document.getElementById("standingsList");
+
+  if (standings.length === 0) {
+    list.innerHTML = "Aún no hay tabla disponible.";
+    return;
+  }
+
+  list.innerHTML = standings.map((row, index) => `
+    <div class="player-row">
+      <div>
+        <strong>${index + 1}. ${row.pair_name}</strong><br>
+        <span class="meta">
+          Ganados: ${row.wins} · Perdidos: ${row.losses} · Games ganados: ${row.games_won}
+        </span>
+      </div>
+    </div>
+  `).join("");
+}
 
 
 function fillPairSelectors(players) {
@@ -336,6 +364,7 @@ loadAmericano();
 loadPlayers();
 loadPairs();
 loadMatches();
+loadStandings();
 
 </script>
 

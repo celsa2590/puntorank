@@ -228,6 +228,10 @@ class AmericanoPairCreate(BaseModel):
     player_2_id: int
     pair_name: str | None = None
 
+class AmericanoMatchResult(BaseModel):
+    pair_a_games: int
+    pair_b_games: int
+
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -1304,3 +1308,128 @@ def get_americano_pairs(americano_id: int):
             )
 
             return cur.fetchall()
+
+
+@app.post("/americano-matches/{match_id}/result")
+def save_americano_match_result(
+    match_id: int,
+    data: AmericanoMatchResult,
+):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            winning_team = None
+
+            if data.pair_a_games > data.pair_b_games:
+                winning_team = "A"
+
+            elif data.pair_b_games > data.pair_a_games:
+                winning_team = "B"
+
+            cur.execute(
+                """
+                UPDATE americano_matches
+                SET
+                    pair_a_games = %s,
+                    pair_b_games = %s,
+                    winning_team = %s,
+                    score = %s
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (
+                    data.pair_a_games,
+                    data.pair_b_games,
+                    winning_team,
+                    f"{data.pair_a_games}-{data.pair_b_games}",
+                    match_id,
+                ),
+            )
+
+            match = cur.fetchone()
+
+            conn.commit()
+
+            return match
+
+
+@app.get("/americanos/{americano_id}/standings")
+def get_americano_standings(americano_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    ap.id,
+                    COALESCE(
+                        ap.pair_name,
+                        p1.name || ' / ' || p2.name
+                    ) AS pair_name,
+
+                    COUNT(am.id) FILTER (
+                        WHERE (
+                            am.pair_a_id = ap.id
+                            AND am.winning_team = 'A'
+                        )
+                        OR (
+                            am.pair_b_id = ap.id
+                            AND am.winning_team = 'B'
+                        )
+                    ) AS wins,
+
+                    COUNT(am.id) FILTER (
+                        WHERE (
+                            am.pair_a_id = ap.id
+                            AND am.winning_team = 'B'
+                        )
+                        OR (
+                            am.pair_b_id = ap.id
+                            AND am.winning_team = 'A'
+                        )
+                    ) AS losses,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN am.pair_a_id = ap.id
+                                THEN am.pair_a_games
+                                WHEN am.pair_b_id = ap.id
+                                THEN am.pair_b_games
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS games_won
+
+                FROM americano_pairs ap
+
+                LEFT JOIN americano_matches am
+                    ON am.pair_a_id = ap.id
+                    OR am.pair_b_id = ap.id
+
+                JOIN players p1
+                    ON p1.id = ap.player_1_id
+
+                JOIN players p2
+                    ON p2.id = ap.player_2_id
+
+                WHERE ap.americano_id = %s
+
+                GROUP BY
+                    ap.id,
+                    p1.name,
+                    p2.name
+
+                ORDER BY wins DESC, games_won DESC;
+                """,
+                (americano_id,),
+            )
+
+            return cur.fetchall()
+
+
+
+
