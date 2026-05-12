@@ -223,6 +223,11 @@ class AmericanoAddPlayer(BaseModel):
     category: str | None = None
     side: str | None = None
 
+class AmericanoPairCreate(BaseModel):
+    player_1_id: int
+    player_2_id: int
+    pair_name: str | None = None
+
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -1171,3 +1176,50 @@ def get_americano_matches(americano_id: int):
 
             return cur.fetchall()
 
+@app.post("/americanos/{americano_id}/pairs")
+def create_americano_pair(americano_id: int, data: AmericanoPairCreate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO americano_pairs
+                    (americano_id, player_1_id, player_2_id, pair_name)
+                VALUES
+                    (%s, %s, %s, %s)
+                RETURNING *;
+                """,
+                (
+                    americano_id,
+                    data.player_1_id,
+                    data.player_2_id,
+                    data.pair_name,
+                ),
+            )
+
+            pair = cur.fetchone()
+            conn.commit()
+            return pair
+
+@app.get("/americanos/{americano_id}/pairs")
+def get_americano_pairs(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ap.id,
+                    ap.pair_name,
+                    p1.name AS player_1_name,
+                    p2.name AS player_2_name,
+                    ap.player_1_id,
+                    ap.player_2_id
+                FROM americano_pairs ap
+                JOIN players p1 ON p1.id = ap.player_1_id
+                JOIN players p2 ON p2.id = ap.player_2_id
+                WHERE ap.americano_id = %s
+                ORDER BY ap.id;
+                """,
+                (americano_id,),
+            )
+
+            return cur.fetchall()

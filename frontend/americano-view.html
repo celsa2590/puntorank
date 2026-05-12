@@ -70,6 +70,18 @@
       color: white;
       border: 1px solid #333;
     }
+input, select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #111;
+  color: white;
+  font-size: 15px;
+  box-sizing: border-box;
+  margin-bottom: 10px;
+}
+
   </style>
 </head>
 <body>
@@ -86,6 +98,24 @@
 <div class="card">
   <h2>Jugadores inscritos</h2>
   <div id="playersList">Cargando jugadores...</div>
+</div>
+
+<div class="card">
+  <h2>Crear pareja</h2>
+
+  <label>Jugadora 1</label>
+  <select id="pairPlayer1"></select>
+
+  <label>Jugadora 2</label>
+  <select id="pairPlayer2"></select>
+
+  <label>Nombre pareja</label>
+  <input type="text" id="pairName" placeholder="Ej: Celsa / Miraida">
+
+  <button onclick="createPair()">Crear pareja</button>
+
+  <h3>Parejas creadas</h3>
+  <div id="pairsList">Cargando parejas...</div>
 </div>
 
 <div class="card">
@@ -106,6 +136,8 @@
 
   const params = new URLSearchParams(window.location.search);
   const americanoId = params.get("id");
+
+  let americanoPlayers = [];
 
   if (!americanoId) {
     window.location.href = "americanos.html";
@@ -135,6 +167,8 @@
   async function loadPlayers() {
     const response = await fetch(`${API_URL}/americanos/${americanoId}/players`);
     const players = await response.json();
+    americanoPlayers = players;
+    fillPairSelectors(players);
 
     const list = document.getElementById("playersList");
 
@@ -158,6 +192,86 @@
     `).join("");
   }
 
+
+function fillPairSelectors(players) {
+  const select1 = document.getElementById("pairPlayer1");
+  const select2 = document.getElementById("pairPlayer2");
+
+  if (!select1 || !select2) return;
+
+  select1.innerHTML = `<option value="">Selecciona jugadora</option>`;
+  select2.innerHTML = `<option value="">Selecciona jugadora</option>`;
+
+  players.forEach(p => {
+    const option1 = document.createElement("option");
+    option1.value = p.player_id;
+    option1.textContent = p.name;
+
+    const option2 = document.createElement("option");
+    option2.value = p.player_id;
+    option2.textContent = p.name;
+
+    select1.appendChild(option1);
+    select2.appendChild(option2);
+  });
+}
+
+async function createPair() {
+  const player1 = document.getElementById("pairPlayer1").value;
+  const player2 = document.getElementById("pairPlayer2").value;
+  const pairName = document.getElementById("pairName").value.trim();
+
+  if (!player1 || !player2) {
+    alert("Debes seleccionar dos jugadoras.");
+    return;
+  }
+
+  if (player1 === player2) {
+    alert("La pareja debe tener dos jugadoras distintas.");
+    return;
+  }
+
+  const payload = {
+    player_1_id: parseInt(player1),
+    player_2_id: parseInt(player2),
+    pair_name: pairName || null
+  };
+
+  const response = await fetch(`${API_URL}/americanos/${americanoId}/pairs`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    alert("No se pudo crear la pareja.");
+    return;
+  }
+
+  document.getElementById("pairName").value = "";
+  await loadPairs();
+}
+
+async function loadPairs() {
+  const response = await fetch(`${API_URL}/americanos/${americanoId}/pairs`);
+  const pairs = await response.json();
+
+  const list = document.getElementById("pairsList");
+
+  if (pairs.length === 0) {
+    list.innerHTML = "Aún no hay parejas creadas.";
+    return;
+  }
+
+  list.innerHTML = pairs.map(pair => `
+    <div class="player-row">
+      <div>
+        <strong>${pair.pair_name || `${pair.player_1_name} / ${pair.player_2_name}`}</strong><br>
+        <span class="meta">${pair.player_1_name} / ${pair.player_2_name}</span>
+      </div>
+    </div>
+  `).join("");
+}
 
 async function togglePaid(americanoPlayerId) {
   await fetch(`${API_URL}/americanos/players/${americanoPlayerId}/toggle-paid`, {
@@ -205,6 +319,7 @@ async function loadMatches() {
 
 loadAmericano();
 loadPlayers();
+loadPairs();
 loadMatches();
 
 </script>
