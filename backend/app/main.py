@@ -169,6 +169,8 @@ def update_rating_pair_vs_pair(
     player_ids_team_b,
     winner,
     match_id=None,
+    source_type=None,
+    source_id=None,
     multiplier=1.0,
 ):
     ratings = {}
@@ -223,16 +225,20 @@ def update_rating_pair_vs_pair(
                 (
                     player_id,
                     match_id,
+                    source_type,
+                    source_id,
                     rating_before,
                     rating_after,
                     delta
                 )
             VALUES
-                (%s, %s, %s, %s, %s);
+                (%s, %s, %s, %s, %s, %s, %s);
             """,
             (
                 player_id,
                 match_id,
+                source_type,
+                source_id,
                 before,
                 after,
                 delta_a,
@@ -259,16 +265,20 @@ def update_rating_pair_vs_pair(
                 (
                     player_id,
                     match_id,
+                    source_type,
+                    source_id,
                     rating_before,
                     rating_after,
                     delta
                 )
             VALUES
-                (%s, %s, %s, %s, %s);
+                (%s, %s, %s, %s, %s, %s, %s);
             """,
             (
                 player_id,
                 match_id,
+                source_type,
+                source_id,
                 before,
                 after,
                 delta_b,
@@ -276,7 +286,7 @@ def update_rating_pair_vs_pair(
         )
 
 
-def apply_rating_bonus(cur, player_id: int, bonus: float, source_label: str):
+def apply_rating_bonus(cur, player_id: int, bonus: float, source_type: str, source_id: int):
     ensure_player_rating(cur, player_id)
 
     cur.execute(
@@ -303,11 +313,11 @@ def apply_rating_bonus(cur, player_id: int, bonus: float, source_label: str):
     cur.execute(
         """
         INSERT INTO rating_history
-            (player_id, match_id, rating_before, rating_after, delta)
+            (player_id, match_id, source_type, source_id, rating_before, rating_after, delta)
         VALUES
-            (%s, NULL, %s, %s, %s);
+            (%s, NULL, %s, %s, %s %s, %s);
         """,
-        (player_id, before, after, bonus),
+        (player_id, source_type, source_id, before, after, bonus),
     )
 
 
@@ -1668,7 +1678,9 @@ def finish_americano(americano_id: int):
                         match["b2"],
                     ],
                     winner=match["winning_team"],
-                    match_id=match["id"],
+                    match_id=None,
+                    source_type="americano_match",
+                    source_id=match["id"],
                     multiplier=1.2,
                 )
 
@@ -1737,6 +1749,7 @@ def finish_americano(americano_id: int):
                         row["player_1_id"],
                         bonus,
                         "americano_podium",
+                        americano_id,
                     )
 
                     apply_rating_bonus(
@@ -1744,6 +1757,7 @@ def finish_americano(americano_id: int):
                         row["player_2_id"],
                         bonus,
                         "americano_podium",
+                        americano_id,
                     )
 
             # Por ahora solo cerramos el americano.
