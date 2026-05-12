@@ -1097,51 +1097,83 @@ def generate_americano_rounds(americano_id: int):
                 (americano_id,),
             )
 
-            # todos contra todos: cada pareja contra todas las demás
-            matches = []
-            for i in range(len(pairs)):
-                for j in range(i + 1, len(pairs)):
-                    matches.append((pairs[i], pairs[j]))
 
-            courts = int(americano["courts"])
-            total_matches = len(matches)
-            rounds_needed = (total_matches + courts - 1) // courts
-            recommended_minutes = int(americano["duration_minutes"] / rounds_needed)
 
-            match_index = 0
+# round-robin real: una pareja juega solo una vez por ronda
+pairs_work = pairs.copy()
 
-            for round_number in range(1, rounds_needed + 1):
-                for court_number in range(1, courts + 1):
-                    if match_index >= total_matches:
-                        break
+# Si hubiera número impar de parejas, agregamos descanso
+if len(pairs_work) % 2 != 0:
+    pairs_work.append(None)
 
-                    pair_a, pair_b = matches[match_index]
+n = len(pairs_work)
+rounds_needed = n - 1
+courts = int(americano["courts"])
+matches_per_round = n // 2
+total_matches = (len(pairs) * (len(pairs) - 1)) // 2
 
-                    cur.execute(
-                        """
-                        INSERT INTO americano_rounds
-                            (americano_id, round_number, court_number)
-                        VALUES
-                            (%s, %s, %s)
-                        RETURNING id;
-                        """,
-                        (americano_id, round_number, court_number),
-                    )
+recommended_minutes = int(americano["duration_minutes"] / rounds_needed)
 
-                    round_row = cur.fetchone()
-                    round_id = round_row["id"]
+rounds = []
 
-                    cur.execute(
-                        """
-                        INSERT INTO americano_matches
-                            (round_id, pair_a_id, pair_b_id)
-                        VALUES
-                            (%s, %s, %s);
-                        """,
-                        (round_id, pair_a, pair_b),
-                    )
+for round_number in range(1, rounds_needed + 1):
+    round_matches = []
 
-                    match_index += 1
+    for i in range(matches_per_round):
+        pair_a = pairs_work[i]
+        pair_b = pairs_work[n - 1 - i]
+
+        # Si hay descanso, no se crea match
+        if pair_a is not None and pair_b is not None:
+            round_matches.append((pair_a, pair_b))
+
+    rounds.append(round_matches)
+
+    # rotación round-robin manteniendo fijo el primero
+    pairs_work = [pairs_work[0]] + [pairs_work[-1]] + pairs_work[1:-1]
+
+
+matches_created = 0
+
+for round_index, round_matches in enumerate(rounds, start=1):
+
+    for court_index, (pair_a, pair_b) in enumerate(round_matches, start=1):
+
+        if court_index > courts:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Necesitas al menos {matches_per_round} canchas para que nadie descanse."
+            )
+
+        cur.execute(
+            """
+            INSERT INTO americano_rounds
+                (americano_id, round_number, court_number)
+            VALUES
+                (%s, %s, %s)
+            RETURNING id;
+            """,
+            (americano_id, round_index, court_index),
+        )
+
+        round_row = cur.fetchone()
+        round_id = round_row["id"]
+
+        cur.execute(
+            """
+            INSERT INTO americano_matches
+                (round_id, pair_a_id, pair_b_id)
+            VALUES
+                (%s, %s, %s);
+            """,
+            (round_id, pair_a, pair_b),
+        )
+
+        matches_created += 1
+
+
+
+
 
             cur.execute(
                 """
@@ -1158,7 +1190,7 @@ def generate_americano_rounds(americano_id: int):
                 "message": "Rondas generadas",
                 "format": "round_robin",
                 "pairs": len(pairs),
-                "matches_created": total_matches,
+                "matches_created": matches_created,
                 "rounds_created": rounds_needed,
                 "recommended_minutes_per_match": recommended_minutes,
             }
