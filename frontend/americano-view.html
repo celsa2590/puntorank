@@ -83,12 +83,25 @@
     <div class="meta" id="americanoDetail"></div>
   </div>
 
-  <div class="card">
-    <h2>Jugadores inscritos</h2>
-    <div id="playersList">Cargando jugadores...</div>
+<div class="card">
+  <h2>Jugadores inscritos</h2>
+  <div id="playersList">Cargando jugadores...</div>
+</div>
+
+<div class="card">
+  <h2>Partidos generados</h2>
+
+  <button onclick="generateRounds()">
+    Generar rondas
+  </button>
+
+  <div id="matchesList" style="margin-top:16px;">
+    Aún no se han generado rondas.
   </div>
+</div>
 
 <script>
+
   const API_URL = "https://puntorank-backend.onrender.com";
 
   const params = new URLSearchParams(window.location.search);
@@ -145,8 +158,6 @@
     `).join("");
   }
 
-  loadAmericano();
-  loadPlayers();
 
 async function togglePaid(americanoPlayerId) {
   await fetch(`${API_URL}/americanos/players/${americanoPlayerId}/toggle-paid`, {
@@ -155,6 +166,46 @@ async function togglePaid(americanoPlayerId) {
 
   loadPlayers();
 }
+
+async function generateRounds() {
+  const response = await fetch(`${API_URL}/americanos/${americanoId}/generate-rounds`, {
+    method: "POST"
+  });
+
+  if (!response.ok) {
+    alert("No se pudieron generar rondas. Revisa cantidad de jugadores.");
+    return;
+  }
+
+  await loadMatches();
+}
+
+async function loadMatches() {
+  const response = await fetch(`${API_URL}/americanos/${americanoId}/matches`);
+  const matches = await response.json();
+
+  const list = document.getElementById("matchesList");
+
+  if (matches.length === 0) {
+    list.innerHTML = "Aún no se han generado rondas.";
+    return;
+  }
+
+  list.innerHTML = matches.map(m => `
+    <div class="player-row">
+      <div>
+        <strong>Ronda ${m.round_number} · Cancha ${m.court_number}</strong><br>
+        ${m.player_a1} / ${m.player_a2}
+        <br>vs<br>
+        ${m.player_b1} / ${m.player_b2}
+      </div>
+    </div>
+  `).join("");
+}
+
+loadAmericano();
+loadPlayers();
+loadMatches();
 
 </script>
 

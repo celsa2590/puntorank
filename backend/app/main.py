@@ -1,5 +1,6 @@
 import os
 import psycopg2
+import random
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -1039,3 +1040,134 @@ def toggle_americano_player_paid(americano_player_id: int):
 
             conn.commit()
             return result
+
+@app.post("/americanos/{americano_id}/generate-rounds")
+def generate_americano_rounds(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, courts, duration_minutes
+                FROM americano_events
+                WHERE id = %s;
+                """,
+                (americano_id,),
+            )
+
+            americano = cur.fetchone()
+
+            if not americano:
+                raise HTTPException(status_code=404, detail="Americano no encontrado")
+
+            cur.execute(
+                """
+                SELECT player_id
+                FROM americano_players
+                WHERE americano_id = %s
+                ORDER BY id;
+                """,
+                (americano_id,),
+            )
+
+            players = [r["player_id"] for r in cur.fetchall()]
+
+            if len(players) < 4:
+                raise HTTPException(status_code=400, detail="Se necesitan al menos 4 jugadores")
+
+            random.shuffle(players)
+
+            courts = americano["courts"]
+            max_matches_per_round = courts
+            players_per_round = max_matches_per_round * 4
+
+            rounds_created = 0
+            match_chunks = []
+
+            for i in range(0, len(players), 4):
+                chunk = players[i:i+4]
+                if len(chunk) == 4:
+                    match_chunks.append(chunk)
+
+            for idx, chunk in enumerate(match_chunks):
+                round_number = (idx // max_matches_per_round) + 1
+                court_number = (idx % max_matches_per_round) + 1
+
+                cur.execute(
+                    """
+                    INSERT INTO americano_rounds
+                        (americano_id, round_number, court_number)
+                    VALUES
+                        (%s, %s, %s)
+                    RETURNING id;
+                    """,
+                    (americano_id, round_number, court_number),
+                )
+
+                round_row = cur.fetchone()
+                round_id = round_row["id"]
+
+                cur.execute(
+                    """
+                    INSERT INTO americano_matches
+                        (round_id, player_a1, player_a2, player_b1, player_b2)
+                    VALUES
+                        (%s, %s, %s, %s, %s);
+                    """,
+                    (
+                        round_id,
+                        chunk[0],
+                        chunk[1],
+                        chunk[2],
+                        chunk[3],
+                    ),
+                )
+
+                rounds_created = max(rounds_created, round_number)
+
+            cur.execute(
+                """
+                UPDATE americano_events
+                SET status = 'scheduled'
+                WHERE id = %s;
+                """,
+                (americano_id,),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Rondas generadas",
+                "rounds_created": rounds_created,
+                "matches_created": len(match_chunks),
+            }
+
+@app.get("/americanos/{americano_id}/matches")
+def get_americano_matches(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ar.round_number,
+                    ar.court_number,
+                    am.id AS match_id,
+                    p1.name AS player_a1,
+                    p2.name AS player_a2,
+                    p3.name AS player_b1,
+                    p4.name AS player_b2,
+                    am.score,
+                    am.winning_team
+                FROM americano_matches am
+                JOIN americano_rounds ar ON ar.id = am.round_id
+                JOIN players p1 ON p1.id = am.player_a1
+                JOIN players p2 ON p2.id = am.player_a2
+                JOIN players p3 ON p3.id = am.player_b1
+                JOIN players p4 ON p4.id = am.player_b2
+                WHERE ar.americano_id = %s
+                ORDER BY ar.round_number, ar.court_number;
+                """,
+                (americano_id,),
+            )
+
+            return cur.fetchall()
+
