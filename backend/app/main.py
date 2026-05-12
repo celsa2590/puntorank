@@ -1018,3 +1018,24 @@ def get_americano_detail(americano_id: int):
             return americano
 
 
+@app.post("/americanos/players/{americano_player_id}/toggle-paid")
+def toggle_americano_player_paid(americano_player_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE americano_players
+                SET paid = NOT paid
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (americano_player_id,),
+            )
+
+            result = cur.fetchone()
+
+            if not result:
+                raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+
+            conn.commit()
+            return result

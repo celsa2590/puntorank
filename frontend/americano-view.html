@@ -137,15 +137,25 @@
           <span class="meta">${p.category || ""} · ${p.side || "sin lado"}</span>
         </div>
 
-        <div class="${p.paid ? "paid" : "unpaid"}">
+        <button onclick="togglePaid(${p.id})" class="${p.paid ? "paid" : "unpaid"}">
           ${p.paid ? "Pagado" : "No pagado"}
-        </div>
+        </button>
+
       </div>
     `).join("");
   }
 
   loadAmericano();
   loadPlayers();
+
+async function togglePaid(americanoPlayerId) {
+  await fetch(`${API_URL}/americanos/players/${americanoPlayerId}/toggle-paid`, {
+    method: "POST"
+  });
+
+  loadPlayers();
+}
+
 </script>
 
 </body>
