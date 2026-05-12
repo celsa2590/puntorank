@@ -207,13 +207,9 @@
       if (!response.ok) throw new Error("No se pudo crear americano");
 
       const americano = await response.json();
-      americanoId = americano.id;
 
-      document.getElementById("createMessage").innerText = "Americano creado correctamente ✅";
-      document.getElementById("playersCard").classList.remove("hidden");
+      window.location.href = `americano-view.html?id=${americano.id}`;
 
-      await loadPlayers();
-      await loadAmericanoPlayers();
 
     } catch (error) {
       console.error(error);

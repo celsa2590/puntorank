@@ -968,3 +968,53 @@ def get_americano_players(americano_id: int):
 
             return cur.fetchall()
 
+@app.get("/club/{club_id}/americanos")
+def get_americanos(club_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ae.id,
+                    ae.name,
+                    ae.category,
+                    ae.gender,
+                    ae.courts,
+                    ae.duration_minutes,
+                    ae.status,
+                    ae.created_at,
+                    COUNT(ap.id) AS players_count
+                FROM americano_events ae
+                LEFT JOIN americano_players ap
+                    ON ap.americano_id = ae.id
+                WHERE ae.club_id = %s
+                GROUP BY ae.id
+                ORDER BY ae.created_at DESC;
+                """,
+                (club_id,),
+            )
+
+            return cur.fetchall()
+
+@app.get("/americanos/{americano_id}")
+def get_americano_detail(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT *
+                FROM americano_events
+                WHERE id = %s;
+                """,
+                (americano_id,),
+            )
+
+            americano = cur.fetchone()
+
+            if not americano:
+                raise HTTPException(status_code=404, detail="Americano no encontrado")
+
+            return americano
+
+

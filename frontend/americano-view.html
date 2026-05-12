@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Americano</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 36px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .card {
+      background: rgba(26,26,26,0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+      max-width: 760px;
+    }
+
+    .meta {
+      color: #aaa;
+      line-height: 1.5;
+    }
+
+    .player-row {
+      border-bottom: 1px solid #333;
+      padding: 12px 0;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .paid {
+      color: #00ff9c;
+      font-weight: bold;
+    }
+
+    .unpaid {
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+
+    button, .btn {
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    .secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+
+  <a class="btn secondary" href="americanos.html">← Volver</a>
+
+  <div class="brand" id="americanoName">Cargando americano...</div>
+
+  <div class="card">
+    <h2>Detalle</h2>
+    <div class="meta" id="americanoDetail"></div>
+  </div>
+
+  <div class="card">
+    <h2>Jugadores inscritos</h2>
+    <div id="playersList">Cargando jugadores...</div>
+  </div>
+
+<script>
+  const API_URL = "https://puntorank-backend.onrender.com";
+
+  const params = new URLSearchParams(window.location.search);
+  const americanoId = params.get("id");
+
+  if (!americanoId) {
+    window.location.href = "americanos.html";
+  }
+
+  async function loadAmericano() {
+    const response = await fetch(`${API_URL}/americanos/${americanoId}`);
+
+    if (!response.ok) {
+      document.getElementById("americanoName").innerText = "Americano no encontrado";
+      return;
+    }
+
+    const americano = await response.json();
+
+    document.getElementById("americanoName").innerText = americano.name;
+
+    document.getElementById("americanoDetail").innerHTML = `
+      Categoría: ${americano.category}<br>
+      Género: ${americano.gender}<br>
+      Canchas: ${americano.courts}<br>
+      Duración bloque: ${americano.duration_minutes} min<br>
+      Estado: ${americano.status}
+    `;
+  }
+
+  async function loadPlayers() {
+    const response = await fetch(`${API_URL}/americanos/${americanoId}/players`);
+    const players = await response.json();
+
+    const list = document.getElementById("playersList");
+
+    if (players.length === 0) {
+      list.innerHTML = "Aún no hay jugadores inscritos.";
+      return;
+    }
+
+    list.innerHTML = players.map(p => `
+      <div class="player-row">
+        <div>
+          <strong>${p.name}</strong><br>
+          <span class="meta">${p.category || ""} · ${p.side || "sin lado"}</span>
+        </div>
+
+        <div class="${p.paid ? "paid" : "unpaid"}">
+          ${p.paid ? "Pagado" : "No pagado"}
+        </div>
+      </div>
+    `).join("");
+  }
+
+  loadAmericano();
+  loadPlayers();
+</script>
+
+</body>
+</html>
