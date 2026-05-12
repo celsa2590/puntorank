@@ -125,9 +125,12 @@ input, select {
     Generar rondas
   </button>
 
-  <div id="matchesList" style="margin-top:16px;">
-    Aún no se han generado rondas.
-  </div>
+<div id="generationSummary" class="meta" style="margin-top:16px;"></div>
+
+<div id="matchesList" style="margin-top:16px;">
+  Aún no se han generado rondas.
+</div>
+
 </div>
 
 <script>
@@ -287,12 +290,24 @@ async function generateRounds() {
   });
 
   if (!response.ok) {
-    alert("No se pudieron generar rondas. Revisa cantidad de jugadores.");
+    const error = await response.json();
+    alert(error.detail || "No se pudieron generar rondas.");
     return;
   }
 
+  const result = await response.json();
+
+  document.getElementById("generationSummary").innerHTML = `
+    Formato: ${result.format}<br>
+    Parejas: ${result.pairs}<br>
+    Partidos: ${result.matches_created}<br>
+    Rondas: ${result.rounds_created}<br>
+    Tiempo recomendado por partido: ${result.recommended_minutes_per_match} min
+  `;
+
   await loadMatches();
 }
+
 
 async function loadMatches() {
   const response = await fetch(`${API_URL}/americanos/${americanoId}/matches`);
@@ -309,9 +324,9 @@ async function loadMatches() {
     <div class="player-row">
       <div>
         <strong>Ronda ${m.round_number} · Cancha ${m.court_number}</strong><br>
-        ${m.pair_a_name}
+        <span class="meta">${m.pair_a_name}</span>
         <br>vs<br>
-        ${m.pair_b_name}
+        <span class="meta">${m.pair_b_name}</span>
       </div>
     </div>
   `).join("");
