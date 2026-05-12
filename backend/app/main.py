@@ -1240,7 +1240,9 @@ def get_americano_matches(americano_id: int):
                     COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
 
                     am.score,
-                    am.winning_team
+                    am.winning_team,
+                    am.pair_a_games,
+                    am.pair_b_games
                 FROM americano_matches am
                 JOIN americano_rounds ar ON ar.id = am.round_id
 

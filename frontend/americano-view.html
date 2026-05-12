@@ -362,7 +362,7 @@ list.innerHTML = matches.map(m => `
           type="number"
           id="a_${m.match_id}"
           placeholder="Games pareja A"
-          value="${m.pair_a_games ?? ""}"
+          value="${m.pair_a_games !== null ? m.pair_a_games : ""}"
           style="width:130px; margin-right:8px;"
         >
 
@@ -370,7 +370,7 @@ list.innerHTML = matches.map(m => `
           type="number"
           id="b_${m.match_id}"
           placeholder="Games pareja B"
-          value="${m.pair_b_games ?? ""}"
+          value="${m.pair_b_games !== null ? m.pair_b_games : ""}"
           style="width:130px; margin-right:8px;"
         >
 
