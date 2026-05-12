@@ -135,6 +135,12 @@ input, select {
 
 <div class="card">
   <h2>Tabla de posiciones</h2>
+  <button onclick="finishAmericano()">
+    Finalizar Americano
+  </button>
+
+<div id="finishMessage" class="meta" style="margin-top:12px;"></div>
+
   <div id="standingsList">Cargando tabla...</div>
 </div>
 <script>
@@ -413,6 +419,37 @@ async function saveMatchResult(matchId) {
   }
 
   await loadMatches();
+  await loadStandings();
+}
+
+async function finishAmericano() {
+
+  const confirmFinish = confirm(
+    "¿Seguro que deseas finalizar el americano? Esto procesará el ranking."
+  );
+
+  if (!confirmFinish) {
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/americanos/${americanoId}/finish`,
+    {
+      method: "POST"
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo finalizar el americano.");
+    return;
+  }
+
+  document.getElementById("finishMessage").innerHTML = `
+    ✅ Americano finalizado correctamente.
+  `;
+
   await loadStandings();
 }
 
