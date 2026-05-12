@@ -162,6 +162,155 @@ def update_ratings_for_match(cur, match_id: int):
             VALUES (%s, %s, %s, %s, %s);
         """, (player_id, match_id, old_rating, new_rating, delta_b))
 
+
+def update_rating_pair_vs_pair(
+    cur,
+    player_ids_team_a,
+    player_ids_team_b,
+    winner,
+    match_id=None,
+    multiplier=1.0,
+):
+    ratings = {}
+
+    all_players = player_ids_team_a + player_ids_team_b
+
+    for player_id in all_players:
+        ensure_player_rating(cur, player_id)
+
+        cur.execute(
+            """
+            SELECT rating
+            FROM player_ratings
+            WHERE player_id = %s;
+            """,
+            (player_id,),
+        )
+
+        ratings[player_id] = float(cur.fetchone()["rating"])
+
+    rating_a = sum(ratings[p] for p in player_ids_team_a) / 2
+    rating_b = sum(ratings[p] for p in player_ids_team_b) / 2
+
+    expected_a = 1 / (1 + 10 ** ((rating_b - rating_a) / 400))
+    expected_b = 1 - expected_a
+
+    score_a = 1 if winner == "A" else 0
+    score_b = 1 if winner == "B" else 0
+
+    k = 32 * multiplier
+
+    delta_a = k * (score_a - expected_a)
+    delta_b = k * (score_b - expected_b)
+
+    for player_id in player_ids_team_a:
+
+        before = ratings[player_id]
+        after = before + delta_a
+
+        cur.execute(
+            """
+            UPDATE player_ratings
+            SET rating = %s
+            WHERE player_id = %s;
+            """,
+            (after, player_id),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO rating_history
+                (
+                    player_id,
+                    match_id,
+                    rating_before,
+                    rating_after,
+                    delta
+                )
+            VALUES
+                (%s, %s, %s, %s, %s);
+            """,
+            (
+                player_id,
+                match_id,
+                before,
+                after,
+                delta_a,
+            ),
+        )
+
+    for player_id in player_ids_team_b:
+
+        before = ratings[player_id]
+        after = before + delta_b
+
+        cur.execute(
+            """
+            UPDATE player_ratings
+            SET rating = %s
+            WHERE player_id = %s;
+            """,
+            (after, player_id),
+        )
+
+        cur.execute(
+            """
+            INSERT INTO rating_history
+                (
+                    player_id,
+                    match_id,
+                    rating_before,
+                    rating_after,
+                    delta
+                )
+            VALUES
+                (%s, %s, %s, %s, %s);
+            """,
+            (
+                player_id,
+                match_id,
+                before,
+                after,
+                delta_b,
+            ),
+        )
+
+
+def apply_rating_bonus(cur, player_id: int, bonus: float, source_label: str):
+    ensure_player_rating(cur, player_id)
+
+    cur.execute(
+        """
+        SELECT rating
+        FROM player_ratings
+        WHERE player_id = %s;
+        """,
+        (player_id,),
+    )
+
+    before = float(cur.fetchone()["rating"])
+    after = before + bonus
+
+    cur.execute(
+        """
+        UPDATE player_ratings
+        SET rating = %s
+        WHERE player_id = %s;
+        """,
+        (after, player_id),
+    )
+
+    cur.execute(
+        """
+        INSERT INTO rating_history
+            (player_id, match_id, rating_before, rating_after, delta)
+        VALUES
+            (%s, NULL, %s, %s, %s);
+        """,
+        (player_id, before, after, bonus),
+    )
+
+
 class PlayerCreate(BaseModel):
     name: str
     club_id: int | None = None
@@ -1432,6 +1581,190 @@ def get_americano_standings(americano_id: int):
 
             return cur.fetchall()
 
+@app.post("/americanos/{americano_id}/finish")
+def finish_americano(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Verificar americano
+            cur.execute(
+                """
+                SELECT id, status, rating_processed
+                FROM americano_events
+                WHERE id = %s;
+                """,
+                (americano_id,),
+            )
 
+            americano = cur.fetchone()
+
+            if not americano:
+                raise HTTPException(status_code=404, detail="Americano no encontrado")
+
+            if americano["rating_processed"]:
+                raise HTTPException(status_code=400, detail="Este americano ya fue procesado")
+
+            # Verificar partidos sin resultado
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pending_results
+                FROM americano_matches am
+                JOIN americano_rounds ar ON ar.id = am.round_id
+                WHERE ar.americano_id = %s
+                  AND am.winning_team IS NULL;
+                """,
+                (americano_id,),
+            )
+
+            pending = cur.fetchone()["pending_results"]
+
+            if pending > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Faltan {pending} partidos por cargar resultado",
+                )
+
+
+# Procesar rating de partidos americano
+            cur.execute(
+                """
+                SELECT
+                    am.id,
+                    am.winning_team,
+
+                    pa.player_1_id AS a1,
+                    pa.player_2_id AS a2,
+
+                    pb.player_1_id AS b1,
+                    pb.player_2_id AS b2
+
+                FROM americano_matches am
+
+                JOIN americano_rounds ar
+                    ON ar.id = am.round_id
+
+                JOIN americano_pairs pa
+                    ON pa.id = am.pair_a_id
+
+                JOIN americano_pairs pb
+                    ON pb.id = am.pair_b_id
+
+                WHERE ar.americano_id = %s;
+                """,
+                (americano_id,),
+            )
+
+            matches = cur.fetchall()
+
+            for match in matches:
+
+                update_rating_pair_vs_pair(
+                    cur=cur,
+                    player_ids_team_a=[
+                        match["a1"],
+                        match["a2"],
+                    ],
+                    player_ids_team_b=[
+                        match["b1"],
+                        match["b2"],
+                    ],
+                    winner=match["winning_team"],
+                    match_id=match["id"],
+                    multiplier=1.2,
+                )
+
+# Bonus de podio del americano
+            cur.execute(
+                """
+                SELECT
+                    ap.id AS pair_id,
+                    ap.player_1_id,
+                    ap.player_2_id,
+
+                    COUNT(am.id) FILTER (
+                        WHERE (
+                            am.pair_a_id = ap.id
+                            AND am.winning_team = 'A'
+                        )
+                        OR (
+                            am.pair_b_id = ap.id
+                            AND am.winning_team = 'B'
+                        )
+                    ) AS wins,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN am.pair_a_id = ap.id THEN am.pair_a_games
+                                WHEN am.pair_b_id = ap.id THEN am.pair_b_games
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS games_won
+
+                FROM americano_pairs ap
+
+                LEFT JOIN americano_matches am
+                    ON am.pair_a_id = ap.id
+                    OR am.pair_b_id = ap.id
+
+                WHERE ap.americano_id = %s
+
+                GROUP BY
+                    ap.id,
+                    ap.player_1_id,
+                    ap.player_2_id
+
+                ORDER BY wins DESC, games_won DESC;
+                """,
+                (americano_id,),
+            )
+
+            standings = cur.fetchall()
+
+            podium_bonus = {
+                0: 10,
+                1: 5,
+                2: 2,
+            }
+
+            for index, row in enumerate(standings[:3]):
+                bonus = podium_bonus.get(index, 0)
+
+                if bonus > 0:
+                    apply_rating_bonus(
+                        cur,
+                        row["player_1_id"],
+                        bonus,
+                        "americano_podium",
+                    )
+
+                    apply_rating_bonus(
+                        cur,
+                        row["player_2_id"],
+                        bonus,
+                        "americano_podium",
+                    )
+
+            # Por ahora solo cerramos el americano.
+            # En el siguiente paso conectamos impacto de rating.
+            cur.execute(
+                """
+                UPDATE americano_events
+                SET status = 'completed',
+                    rating_processed = TRUE
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (americano_id,),
+            )
+
+            result = cur.fetchone()
+            conn.commit()
+
+            return {
+                "message": "Americano finalizado correctamente",
+                "americano": result,
+            }
 
 
