@@ -348,17 +348,74 @@ async function loadMatches() {
     return;
   }
 
-  list.innerHTML = matches.map(m => `
-    <div class="player-row">
-      <div>
-        <strong>Ronda ${m.round_number} · Cancha ${m.court_number}</strong><br>
-        <span class="meta">${m.pair_a_name}</span>
-        <br>vs<br>
-        <span class="meta">${m.pair_b_name}</span>
+list.innerHTML = matches.map(m => `
+  <div class="player-row">
+    <div style="width:100%;">
+      <strong>Ronda ${m.round_number} · Cancha ${m.court_number}</strong><br>
+
+      <span class="meta">${m.pair_a_name}</span>
+      <br>vs<br>
+      <span class="meta">${m.pair_b_name}</span>
+
+      <div style="margin-top:10px;">
+        <input
+          type="number"
+          id="a_${m.match_id}"
+          placeholder="Games pareja A"
+          value="${m.pair_a_games ?? ""}"
+          style="width:130px; margin-right:8px;"
+        >
+
+        <input
+          type="number"
+          id="b_${m.match_id}"
+          placeholder="Games pareja B"
+          value="${m.pair_b_games ?? ""}"
+          style="width:130px; margin-right:8px;"
+        >
+
+        <button onclick="saveMatchResult(${m.match_id})">
+          Guardar resultado
+        </button>
+      </div>
+
+      <div class="meta">
+        Resultado actual: ${m.score || "sin resultado"}
       </div>
     </div>
-  `).join("");
+  </div>
+`).join("");
+
+
 }
+
+async function saveMatchResult(matchId) {
+  const pairAGames = parseInt(document.getElementById(`a_${matchId}`).value);
+  const pairBGames = parseInt(document.getElementById(`b_${matchId}`).value);
+
+  if (Number.isNaN(pairAGames) || Number.isNaN(pairBGames)) {
+    alert("Debes ingresar los games de ambas parejas.");
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/americano-matches/${matchId}/result`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      pair_a_games: pairAGames,
+      pair_b_games: pairBGames
+    })
+  });
+
+  if (!response.ok) {
+    alert("No se pudo guardar el resultado.");
+    return;
+  }
+
+  await loadMatches();
+  await loadStandings();
+}
+
 
 loadAmericano();
 loadPlayers();
