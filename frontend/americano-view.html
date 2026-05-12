@@ -448,12 +448,13 @@ async function finishAmericano() {
 
   document.getElementById("finishMessage").innerHTML = `
     ✅ Americano finalizado correctamente.
+  `;
+
 const button = document.getElementById("finishButton");
 button.innerText = "Finalizado";
 button.disabled = true;
 button.style.opacity = "0.6";
 button.style.cursor = "not-allowed";
-  `;
 
   await loadStandings();
 }
