@@ -820,3 +820,39 @@ def club_login(login: ClubLogin):
 
 
 
+@app.get("/club/{club_id}/history")
+def get_club_history(club_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.status,
+                    m.match_type,
+                    m.category,
+                    m.played_at,
+                    mr.score,
+                    mr.winning_team,
+                    ce.name AS event_name,
+
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'A') AS team_a,
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'B') AS team_b
+
+                FROM matches m
+                JOIN match_players mp ON mp.match_id = m.id
+                JOIN players p ON p.id = mp.player_id
+                LEFT JOIN match_results mr ON mr.match_id = m.id
+                LEFT JOIN club_events ce ON ce.id = m.event_id
+
+                WHERE m.club_id = %s
+                  AND m.status IN ('approved', 'rejected')
+
+                GROUP BY m.id, m.status, m.match_type, m.category, m.played_at, mr.score, mr.winning_team, ce.name
+
+                ORDER BY m.played_at DESC;
+                """,
+                (club_id,),
+            )
+
+            return cur.fetchall()
