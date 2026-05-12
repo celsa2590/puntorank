@@ -1046,6 +1046,7 @@ def toggle_americano_player_paid(americano_player_id: int):
             conn.commit()
             return result
 
+
 @app.post("/americanos/{americano_id}/generate-rounds")
 def generate_americano_rounds(americano_id: int):
     with get_conn() as conn:
@@ -1058,7 +1059,6 @@ def generate_americano_rounds(americano_id: int):
                 """,
                 (americano_id,),
             )
-
             americano = cur.fetchone()
 
             if not americano:
@@ -1066,68 +1066,82 @@ def generate_americano_rounds(americano_id: int):
 
             cur.execute(
                 """
-                SELECT player_id
-                FROM americano_players
+                SELECT id
+                FROM americano_pairs
                 WHERE americano_id = %s
                 ORDER BY id;
                 """,
                 (americano_id,),
             )
 
-            players = [r["player_id"] for r in cur.fetchall()]
+            pairs = [r["id"] for r in cur.fetchall()]
 
-            if len(players) < 4:
-                raise HTTPException(status_code=400, detail="Se necesitan al menos 4 jugadores")
-
-            random.shuffle(players)
-
-            courts = americano["courts"]
-            max_matches_per_round = courts
-            players_per_round = max_matches_per_round * 4
-
-            rounds_created = 0
-            match_chunks = []
-
-            for i in range(0, len(players), 4):
-                chunk = players[i:i+4]
-                if len(chunk) == 4:
-                    match_chunks.append(chunk)
-
-            for idx, chunk in enumerate(match_chunks):
-                round_number = (idx // max_matches_per_round) + 1
-                court_number = (idx % max_matches_per_round) + 1
-
-                cur.execute(
-                    """
-                    INSERT INTO americano_rounds
-                        (americano_id, round_number, court_number)
-                    VALUES
-                        (%s, %s, %s)
-                    RETURNING id;
-                    """,
-                    (americano_id, round_number, court_number),
+            if len(pairs) < 4:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Se necesitan al menos 4 parejas",
                 )
 
-                round_row = cur.fetchone()
-                round_id = round_row["id"]
-
-                cur.execute(
-                    """
-                    INSERT INTO americano_matches
-                        (round_id, player_a1, player_a2, player_b1, player_b2)
-                    VALUES
-                        (%s, %s, %s, %s, %s);
-                    """,
-                    (
-                        round_id,
-                        chunk[0],
-                        chunk[1],
-                        chunk[2],
-                        chunk[3],
-                    ),
+            if len(pairs) > 6:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Por ahora este generador soporta hasta 6 parejas. Luego agregaremos grupos + playoffs.",
                 )
 
-                rounds_created = max(rounds_created, round_number)
+            # limpiar rondas anteriores
+            cur.execute(
+                """
+                DELETE FROM americano_rounds
+                WHERE americano_id = %s;
+                """,
+                (americano_id,),
+            )
+
+            # todos contra todos: cada pareja contra todas las demás
+            matches = []
+            for i in range(len(pairs)):
+                for j in range(i + 1, len(pairs)):
+                    matches.append((pairs[i], pairs[j]))
+
+            courts = int(americano["courts"])
+            total_matches = len(matches)
+            rounds_needed = (total_matches + courts - 1) // courts
+            recommended_minutes = int(americano["duration_minutes"] / rounds_needed)
+
+            match_index = 0
+
+            for round_number in range(1, rounds_needed + 1):
+                for court_number in range(1, courts + 1):
+                    if match_index >= total_matches:
+                        break
+
+                    pair_a, pair_b = matches[match_index]
+
+                    cur.execute(
+                        """
+                        INSERT INTO americano_rounds
+                            (americano_id, round_number, court_number)
+                        VALUES
+                            (%s, %s, %s)
+                        RETURNING id;
+                        """,
+                        (americano_id, round_number, court_number),
+                    )
+
+                    round_row = cur.fetchone()
+                    round_id = round_row["id"]
+
+                    cur.execute(
+                        """
+                        INSERT INTO americano_matches
+                            (round_id, pair_a_id, pair_b_id)
+                        VALUES
+                            (%s, %s, %s);
+                        """,
+                        (round_id, pair_a, pair_b),
+                    )
+
+                    match_index += 1
 
             cur.execute(
                 """
@@ -1142,9 +1156,15 @@ def generate_americano_rounds(americano_id: int):
 
             return {
                 "message": "Rondas generadas",
-                "rounds_created": rounds_created,
-                "matches_created": len(match_chunks),
+                "format": "round_robin",
+                "pairs": len(pairs),
+                "matches_created": total_matches,
+                "rounds_created": rounds_needed,
+                "recommended_minutes_per_match": recommended_minutes,
             }
+
+
+
 
 @app.get("/americanos/{americano_id}/matches")
 def get_americano_matches(americano_id: int):
@@ -1156,18 +1176,26 @@ def get_americano_matches(americano_id: int):
                     ar.round_number,
                     ar.court_number,
                     am.id AS match_id,
-                    p1.name AS player_a1,
-                    p2.name AS player_a2,
-                    p3.name AS player_b1,
-                    p4.name AS player_b2,
+
+                    pa.id AS pair_a_id,
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+
+                    pb.id AS pair_b_id,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
                     am.score,
                     am.winning_team
                 FROM americano_matches am
                 JOIN americano_rounds ar ON ar.id = am.round_id
-                JOIN players p1 ON p1.id = am.player_a1
-                JOIN players p2 ON p2.id = am.player_a2
-                JOIN players p3 ON p3.id = am.player_b1
-                JOIN players p4 ON p4.id = am.player_b2
+
+                JOIN americano_pairs pa ON pa.id = am.pair_a_id
+                JOIN players p1a ON p1a.id = pa.player_1_id
+                JOIN players p2a ON p2a.id = pa.player_2_id
+
+                JOIN americano_pairs pb ON pb.id = am.pair_b_id
+                JOIN players p1b ON p1b.id = pb.player_1_id
+                JOIN players p2b ON p2b.id = pb.player_2_id
+
                 WHERE ar.americano_id = %s
                 ORDER BY ar.round_number, ar.court_number;
                 """,
@@ -1175,6 +1203,7 @@ def get_americano_matches(americano_id: int):
             )
 
             return cur.fetchall()
+
 
 @app.post("/americanos/{americano_id}/pairs")
 def create_americano_pair(americano_id: int, data: AmericanoPairCreate):
