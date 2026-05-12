@@ -205,6 +205,23 @@ class ClubLogin(BaseModel):
     username: str
     password: str
 
+class AmericanoCreate(BaseModel):
+    club_id: int
+    name: str
+    category: str
+    gender: str
+    courts: int
+    duration_minutes: int
+
+
+class AmericanoAddPlayer(BaseModel):
+    player_id: int | None = None
+    name: str | None = None
+    email: str | None = None
+    gender: str | None = None
+    category: str | None = None
+    side: str | None = None
+
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -856,3 +873,98 @@ def get_club_history(club_id: int):
             )
 
             return cur.fetchall()
+
+@app.post("/americanos")
+def create_americano(data: AmericanoCreate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO americano_events
+                    (club_id, name, category, gender, courts, duration_minutes, status)
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, 'draft')
+                RETURNING *;
+                """,
+                (
+                    data.club_id,
+                    data.name,
+                    data.category,
+                    data.gender,
+                    data.courts,
+                    data.duration_minutes,
+                ),
+            )
+
+            americano = cur.fetchone()
+            conn.commit()
+            return americano
+
+@app.post("/americanos/{americano_id}/players")
+def add_player_to_americano(americano_id: int, data: AmericanoAddPlayer):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player_id = data.player_id
+
+            if player_id is None:
+                if not data.name:
+                    raise HTTPException(status_code=400, detail="Debes enviar player_id o name")
+
+                cur.execute(
+                    """
+                    INSERT INTO players
+                        (name, email, gender, category, side, is_registered)
+                    VALUES
+                        (%s, %s, %s, %s, %s, FALSE)
+                    RETURNING id;
+                    """,
+                    (
+                        data.name,
+                        data.email,
+                        data.gender,
+                        data.category,
+                        data.side,
+                    ),
+                )
+
+                player = cur.fetchone()
+                player_id = player["id"]
+                ensure_player_rating(cur, player_id)
+
+            cur.execute(
+                """
+                INSERT INTO americano_players (americano_id, player_id)
+                VALUES (%s, %s)
+                RETURNING *;
+                """,
+                (americano_id, player_id),
+            )
+
+            americano_player = cur.fetchone()
+            conn.commit()
+            return americano_player
+
+@app.get("/americanos/{americano_id}/players")
+def get_americano_players(americano_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ap.id,
+                    ap.player_id,
+                    p.name,
+                    p.gender,
+                    p.category,
+                    p.side,
+                    ap.paid
+                FROM americano_players ap
+                JOIN players p ON p.id = ap.player_id
+                WHERE ap.americano_id = %s
+                ORDER BY ap.id;
+                """,
+                (americano_id,),
+            )
+
+            return cur.fetchall()
+
