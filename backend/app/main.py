@@ -1159,6 +1159,8 @@ def generate_americano_rounds(americano_id: int):
                             detail=f"Necesitas al menos {matches_per_round} canchas",
                         )
 
+                    assigned_court = ((court_index + round_index - 2) % courts) + 1
+
                     cur.execute(
                         """
                         INSERT INTO americano_rounds
@@ -1170,7 +1172,7 @@ def generate_americano_rounds(americano_id: int):
                         (
                             americano_id,
                             round_index,
-                            court_index,
+                            assigned_court,
                         ),
                     )
 
