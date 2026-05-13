@@ -727,57 +727,44 @@ def dispute_match(match_id: int, player_id: int):
 
 
 @app.get("/ranking")
-def get_ranking(club_id: int | None = None, gender: str | None = None, category: str | None = None):
-    if club_id is None:
-        query = """
-            SELECT
-                p.id AS player_id,
-                p.name AS player_name,
-                c.name AS club_name,
-                ROUND(pr.rating, 2) AS rating,
-                pr.matches_count,
-                p.is_registered
-            FROM player_ratings pr
-            JOIN players p ON p.id = pr.player_id
-            LEFT JOIN clubs c ON c.id = p.club_id
-            WHERE (%s IS NULL OR p.gender = %s)
-            ORDER BY pr.rating DESC, pr.matches_count DESC, p.name ASC;
-            AND (%s IS NULL OR EXISTS (
-                SELECT 1
-                FROM matches m
-                JOIN match_players mp ON mp.match_id = m.id
-                WHERE mp.player_id = p.id
-                  AND m.category = %s
-            ))
-        """
-        params = [gender, gender]
-    else:
-        query = """
-            SELECT
-                p.id AS player_id,
-                p.name AS player_name,
-                c.name AS club_name,
-                ROUND(pr.rating, 2) AS rating,
-                COUNT(DISTINCT m.id) AS matches_count,
-                p.is_registered
-            FROM players p
-            JOIN player_ratings pr ON pr.player_id = p.id
-            JOIN match_players mp ON mp.player_id = p.id
-            JOIN matches m ON m.id = mp.match_id
-            LEFT JOIN clubs c ON c.id = p.club_id
-            WHERE m.club_id = %s
-              AND (%s IS NULL OR p.gender = %s)
-              AND m.status IN ('confirmed', 'approved')
-              AND m.rating_processed = TRUE
-            GROUP BY p.id, p.name, c.name, pr.rating, p.is_registered
-            ORDER BY pr.rating DESC, matches_count DESC, p.name ASC;
-        """
-        params = [club_id, gender, gender]
+def get_ranking(
+    club_id: int | None = None,
+    gender: str | None = None,
+    category: str | None = None
+):
+    query = """
+        SELECT
+            p.id AS player_id,
+            p.name AS player_name,
+            c.name AS club_name,
+            ROUND(pr.rating, 2) AS rating,
+            pr.matches_count,
+            p.is_registered,
+            p.gender,
+            p.category
+        FROM player_ratings pr
+        JOIN players p ON p.id = pr.player_id
+        LEFT JOIN player_clubs pc ON pc.player_id = p.id
+        LEFT JOIN clubs c ON c.id = COALESCE(pc.club_id, p.club_id)
+        WHERE (%s IS NULL OR COALESCE(pc.club_id, p.club_id) = %s)
+          AND (%s IS NULL OR p.gender = %s)
+          AND (%s IS NULL OR p.category = %s)
+        ORDER BY pr.rating DESC, pr.matches_count DESC, p.name ASC;
+    """
+
+    params = [
+        club_id, club_id,
+        gender, gender,
+        category, category,
+    ]
 
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(query, params)
             return cur.fetchall()
+
+
+
 
 
 @app.get("/matches/{match_id}/rating-change")
