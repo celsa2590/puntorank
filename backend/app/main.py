@@ -1079,17 +1079,35 @@ def add_player_to_americano(americano_id: int, data: AmericanoAddPlayer):
                 if not data.name:
                     raise HTTPException(status_code=400, detail="Debes enviar player_id o name")
 
+
+                cur.execute(
+                    """
+                    SELECT club_id
+                    FROM americano_events
+                    WHERE id = %s;
+                    """,
+                    (americano_id,),
+                )
+
+                americano = cur.fetchone()
+
+                if not americano:
+                    raise HTTPException(status_code=404, detail="Americano no encontrado")
+
+                club_id = americano["club_id"]
+
                 cur.execute(
                     """
                     INSERT INTO players
-                        (name, email, gender, category, side, is_registered)
+                        (name, email, club_id, gender, category, side, is_registered)
                     VALUES
-                        (%s, %s, %s, %s, %s, FALSE)
+                        (%s, %s, %s, %s, %s, %s, FALSE)
                     RETURNING id;
                     """,
                     (
                         data.name,
                         data.email,
+                        club_id,
                         data.gender,
                         data.category,
                         data.side,
@@ -1099,6 +1117,15 @@ def add_player_to_americano(americano_id: int, data: AmericanoAddPlayer):
                 player = cur.fetchone()
                 player_id = player["id"]
                 ensure_player_rating(cur, player_id)
+
+                cur.execute(
+                    """
+                    INSERT INTO player_clubs (player_id, club_id, is_home_club)
+                    VALUES (%s, %s, FALSE)
+                    ON CONFLICT (player_id, club_id) DO NOTHING;
+                    """,
+                    (player_id, club_id),
+                )
 
             cur.execute(
                 """
