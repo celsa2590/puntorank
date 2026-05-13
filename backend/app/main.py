@@ -512,6 +512,14 @@ def report_match(match: MatchReport):
             detail="Por ahora cada partido debe tener exactamente 4 jugadores",
         )
 
+    sets = match.score.strip().split()
+
+    if match.match_type == "standard" and len(sets) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Un amistoso debe tener al menos 2 sets. Ej: 6-4 7-5",
+        )
+
     teams = [p.team for p in match.players]
     if teams.count("A") != 2 or teams.count("B") != 2:
         raise HTTPException(
