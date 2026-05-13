@@ -118,7 +118,7 @@ const historyHtml = history.length === 0
 
       return `
         <div class="history-row">
-          <div>Match #${h.match_id}</div>
+          <div>${getHistoryLabel(h)}</div>
           <div>
             ${h.rating_before} → ${h.rating_after}
             <span class="${deltaClass}">(${sign}${h.delta})</span>
@@ -153,6 +153,23 @@ renderRatingChart(history);
   }
 
   loadProfile();
+
+function getHistoryLabel(h) {
+  if (h.source_type === "americano_match") {
+    return `Americano · Partido #${h.source_id}`;
+  }
+
+  if (h.source_type === "americano_podium") {
+    return "Americano · Bonus podio";
+  }
+
+  if (h.match_id) {
+    return `Match #${h.match_id}`;
+  }
+
+  return "Movimiento de rating";
+}
+
 
 function renderRatingChart(history) {
   const canvas = document.getElementById("ratingChart");

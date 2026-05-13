@@ -830,6 +830,8 @@ def get_player_profile(player_id: int):
                 """
                 SELECT
                     rh.match_id,
+                    rh.source_type,
+                    rh.source_id,
                     ROUND(rh.rating_before, 2) AS rating_before,
                     ROUND(rh.rating_after, 2) AS rating_after,
                     ROUND(rh.delta, 2) AS delta,
