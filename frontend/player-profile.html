@@ -178,7 +178,7 @@ function renderRatingChart(history) {
 
   const orderedHistory = [...history].reverse();
 
-  const labels = orderedHistory.map(h => `Match ${h.match_id}`);
+  const labels = orderedHistory.map(h => getHistoryLabel(h));
 
   const ratings = orderedHistory.map(h => h.rating_after);
 
@@ -191,7 +191,7 @@ function renderRatingChart(history) {
     data: {
       labels: labels,
       datasets: [{
-        label: "Rating",
+        label: labels,
         data: ratings,
         tension: 0.35,
         pointRadius: 5,
