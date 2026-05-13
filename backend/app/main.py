@@ -691,6 +691,15 @@ def approve_match(match_id: int):
 
             update_ratings_for_match(cur, match_id)
 
+            cur.execute(
+                """
+                UPDATE matches
+                SET rating_processed = TRUE
+                WHERE id = %s;
+                """,
+                (match_id,),
+            )
+
             conn.commit()
 
             return {"message": "Partido aprobado y rating actualizado"}
