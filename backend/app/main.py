@@ -1814,4 +1814,97 @@ def finish_americano(americano_id: int):
                 "americano": result,
             }
 
+@app.get("/players/{player_id}/matches-history")
+def get_player_matches_history(player_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
 
+            # Amistosos
+            cur.execute(
+                """
+                SELECT
+                    'friendly_match' AS source_type,
+                    m.id AS source_id,
+                    m.played_at AS played_at,
+                    m.category,
+                    m.match_type,
+                    c.name AS club_name,
+                    mr.score,
+                    mr.winning_team,
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'A') AS team_a,
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'B') AS team_b
+                FROM matches m
+                JOIN match_players mp ON mp.match_id = m.id
+                JOIN players p ON p.id = mp.player_id
+                LEFT JOIN match_results mr ON mr.match_id = m.id
+                LEFT JOIN clubs c ON c.id = m.club_id
+                WHERE m.id IN (
+                    SELECT match_id
+                    FROM match_players
+                    WHERE player_id = %s
+                )
+                GROUP BY
+                    m.id,
+                    m.played_at,
+                    m.category,
+                    m.match_type,
+                    c.name,
+                    mr.score,
+                    mr.winning_team
+                """,
+                (player_id,),
+            )
+
+            friendly = cur.fetchall()
+
+            # Americanos
+            cur.execute(
+                """
+                SELECT
+                    'americano_match' AS source_type,
+                    am.id AS source_id,
+                    ae.created_at AS played_at,
+                    ae.category,
+                    'americano' AS match_type,
+                    c.name AS club_name,
+                    am.score,
+                    am.winning_team,
+
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                    pa.player_1_id AS a1,
+                    pa.player_2_id AS a2,
+                    pb.player_1_id AS b1,
+                    pb.player_2_id AS b2
+
+                FROM americano_matches am
+                JOIN americano_rounds ar ON ar.id = am.round_id
+                JOIN americano_events ae ON ae.id = ar.americano_id
+                LEFT JOIN clubs c ON c.id = ae.club_id
+
+                JOIN americano_pairs pa ON pa.id = am.pair_a_id
+                JOIN players p1a ON p1a.id = pa.player_1_id
+                JOIN players p2a ON p2a.id = pa.player_2_id
+
+                JOIN americano_pairs pb ON pb.id = am.pair_b_id
+                JOIN players p1b ON p1b.id = pb.player_1_id
+                JOIN players p2b ON p2b.id = pb.player_2_id
+
+                WHERE %s IN (
+                    pa.player_1_id,
+                    pa.player_2_id,
+                    pb.player_1_id,
+                    pb.player_2_id
+                )
+                ORDER BY ae.created_at DESC, am.id DESC;
+                """,
+                (player_id,),
+            )
+
+            americanos = cur.fetchall()
+
+            return {
+                "friendly": friendly,
+                "americanos": americanos,
+            }

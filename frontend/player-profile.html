@@ -76,6 +76,11 @@ canvas {
   <canvas id="ratingChart"></canvas>
 </div>
 
+<div class="card">
+  <h2>Historial de partidos</h2>
+  <div id="matchesHistory">Cargando historial...</div>
+</div>
+
 <script>
   const API_URL = "https://puntorank-backend.onrender.com";
 
@@ -231,6 +236,44 @@ function renderRatingChart(history) {
     }
   });
 }
+
+async function loadMatchesHistory() {
+  const response = await fetch(`${API_URL}/players/${playerId}/matches-history`);
+  const data = await response.json();
+
+  const container = document.getElementById("matchesHistory");
+
+  const friendlyHtml = data.friendly.map(m => `
+    <div class="history-row">
+      <div>
+        <strong>Amistoso · ${m.category || ""}</strong><br>
+        <span class="meta">${m.club_name || ""}</span><br>
+        ${m.team_a.join(" / ")} vs ${m.team_b.join(" / ")}
+      </div>
+      <div>
+        ${m.score || "Sin resultado"}
+      </div>
+    </div>
+  `).join("");
+
+  const americanoHtml = data.americanos.map(m => `
+    <div class="history-row">
+      <div>
+        <strong>Americano · ${m.category || ""}</strong><br>
+        <span class="meta">${m.club_name || ""}</span><br>
+        ${m.pair_a_name} vs ${m.pair_b_name}
+      </div>
+      <div>
+        ${m.score || "Sin resultado"}
+      </div>
+    </div>
+  `).join("");
+
+  container.innerHTML = friendlyHtml + americanoHtml || "Aún no hay partidos registrados.";
+}
+
+
+loadMatchesHistory();
 
 </script>
 
