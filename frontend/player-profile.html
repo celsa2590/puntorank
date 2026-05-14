@@ -243,45 +243,77 @@ async function loadMatchesHistory() {
 
   const container = document.getElementById("matchesHistory");
 
-const friendlyHtml = data.friendly.map(m => `
-  <div class="history-row">
-    <div>
-      <strong>Amistoso · ${m.category || ""}</strong><br>
+const friendlyHtml = data.friendly.map(m => {
+  const isTeamA = (m.team_a || []).includes(document.querySelector(".name")?.innerText);
+  const won =
+    (isTeamA && m.winning_team === "A") ||
+    (!isTeamA && m.winning_team === "B");
 
-      <div class="meta">
-        ${new Date(m.played_at).toLocaleDateString()}
+  const resultBadge = won
+    ? `<span class="delta-positive">Ganó</span>`
+    : `<span class="delta-negative">Perdió</span>`;
+
+  return `
+    <div class="history-row">
+      <div>
+        <strong>Amistoso · ${m.category || ""}</strong><br>
+
+        <div class="meta">
+          ${new Date(m.played_at).toLocaleDateString()}
+        </div>
+
+        <span class="meta">${m.club_name || ""}</span><br>
+
+        ${(m.team_a || []).join(" / ")}
+        vs
+        ${(m.team_b || []).join(" / ")}
       </div>
 
-      <span class="meta">${m.club_name || ""}</span><br>
-
-      ${(m.team_a || []).join(" / ")}
-      vs
-      ${(m.team_b || []).join(" / ")}
+      <div>
+        ${m.score || "Sin resultado"}<br>
+        ${resultBadge}
+      </div>
     </div>
+  `;
+}).join("");
 
-    <div>
-      ${m.score || "Sin resultado"}
-    </div>
-  </div>
-`).join("");
+const americanoHtml = data.americanos.map(m => {
+  const playerId = parseInt(PLAYER_ID);
 
-  const americanoHtml = data.americanos.map(m => `
+  const isPairA = [m.a1, m.a2].includes(playerId);
+
+  const won =
+    (isPairA && m.winning_team === "A") ||
+    (!isPairA && m.winning_team === "B");
+
+  const resultBadge = won
+    ? `<span class="delta-positive">Ganó</span>`
+    : `<span class="delta-negative">Perdió</span>`;
+
+  return `
     <div class="history-row">
       <div>
         <strong>Americano · ${m.category || ""}</strong><br>
 
-      <div class="meta">
-        ${new Date(m.played_at).toLocaleDateString()}
-      </div>
+        <div class="meta">
+          ${new Date(m.played_at).toLocaleDateString()}
+        </div>
 
         <span class="meta">${m.club_name || ""}</span><br>
-        ${m.pair_a_name} vs ${m.pair_b_name}
+
+        ${m.pair_a_name}
+        vs
+        ${m.pair_b_name}
       </div>
+
       <div>
-        ${m.score || "Sin resultado"}
+        ${m.score || "Sin resultado"}<br>
+        ${resultBadge}
       </div>
     </div>
-  `).join("");
+  `;
+}).join("");
+
 
   container.innerHTML = friendlyHtml + americanoHtml || "Aún no hay partidos registrados.";
 }
