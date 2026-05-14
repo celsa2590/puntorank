@@ -951,42 +951,6 @@ def register_player(player: PlayerRegister):
             conn.commit()
             return new_player
 
-@app.post("/register")
-def register_player(player: PlayerRegister):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO players (name, email, club_id, gender, side, category, is_registered)
-                VALUES (%s, %s, %s, %s, %s, %s, TRUE)
-                RETURNING *;
-                """,
-                (
-                    player.name,
-                    player.email,
-                    player.club_id,
-                    player.gender,
-                    player.side,
-                    player.category,
-                ),
-            )
-
-            new_player = cur.fetchone()
-
-            if player.club_id is not None:
-                cur.execute(
-                    """
-                    INSERT INTO player_clubs (player_id, club_id, is_home_club)
-                    VALUES (%s, %s, TRUE)
-                    ON CONFLICT (player_id, club_id) DO NOTHING;
-                    """,
-                    (new_player["id"], player.club_id),
-                )
-
-            ensure_player_rating(cur, new_player["id"])
-
-            conn.commit()
-            return new_player
 
 
 @app.post("/club/login")
@@ -1851,6 +1815,7 @@ def get_player_matches_history(player_id: int):
                     c.name,
                     mr.score,
                     mr.winning_team
+                ORDER BY m.played_at DESC;
                 """,
                 (player_id,),
             )
