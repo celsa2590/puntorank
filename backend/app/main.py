@@ -1795,6 +1795,7 @@ def get_player_matches_history(player_id: int):
                     c.name AS club_name,
                     mr.score,
                     mr.winning_team,
+                    ROUND(rh.delta, 2) AS delta,
                     (
                         SELECT mp2.team
                         FROM match_players mp2
@@ -1809,6 +1810,7 @@ def get_player_matches_history(player_id: int):
                 JOIN players p ON p.id = mp.player_id
                 LEFT JOIN match_results mr ON mr.match_id = m.id
                 LEFT JOIN clubs c ON c.id = m.club_id
+                LEFT JOIN rating_history rh ON rh.player_id = %s AND rh.match_id = m.id
                 WHERE m.id IN (
                     SELECT match_id
                     FROM match_players
@@ -1822,9 +1824,10 @@ def get_player_matches_history(player_id: int):
                     c.name,
                     mr.score,
                     mr.winning_team
+                    rh.delta
                 ORDER BY m.played_at DESC;
                 """,
-                (player_id, player_id),
+                (player_id, player_id, player_id),
             )
 
             friendly = cur.fetchall()
@@ -1841,6 +1844,7 @@ def get_player_matches_history(player_id: int):
                     c.name AS club_name,
                     am.score,
                     am.winning_team,
+                    ROUND(rh.delta, 2) AS delta,
 
                     COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
                     COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
@@ -1863,6 +1867,11 @@ def get_player_matches_history(player_id: int):
                 JOIN players p1b ON p1b.id = pb.player_1_id
                 JOIN players p2b ON p2b.id = pb.player_2_id
 
+                LEFT JOIN rating_history rh
+                    ON rh.player_id = %s
+                   AND rh.source_type = 'americano_match'
+                   AND rh.source_id = am.id
+
                 WHERE %s IN (
                     pa.player_1_id,
                     pa.player_2_id,
@@ -1871,7 +1880,7 @@ def get_player_matches_history(player_id: int):
                 )
                 ORDER BY ae.created_at DESC, am.id DESC;
                 """,
-                (player_id,),
+                (player_id, player_id),
             )
 
             americanos = cur.fetchall()
