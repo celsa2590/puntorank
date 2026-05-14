@@ -1823,7 +1823,7 @@ def get_player_matches_history(player_id: int):
                     m.match_type,
                     c.name,
                     mr.score,
-                    mr.winning_team
+                    mr.winning_team,
                     rh.delta
                 ORDER BY m.played_at DESC;
                 """,

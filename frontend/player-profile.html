@@ -286,9 +286,14 @@ const americanoHtml = data.americanos.map(m => {
     (isPairA && m.winning_team === "A") ||
     (!isPairA && m.winning_team === "B");
 
-  const resultBadge = won
-    ? `<span class="delta-positive">Ganó</span>`
-    : `<span class="delta-negative">Perdió</span>`;
+
+const delta = m.delta ?? 0;
+const sign = delta > 0 ? "+" : "";
+
+const resultBadge = won
+  ? `<span class="delta-positive">Ganó · ${sign}${delta} pts</span>`
+  : `<span class="delta-negative">Perdió · ${delta} pts</span>`;
+
 
   return `
     <div class="history-row">
