@@ -244,10 +244,7 @@ async function loadMatchesHistory() {
   const container = document.getElementById("matchesHistory");
 
 const friendlyHtml = data.friendly.map(m => {
-  const isTeamA = (m.team_a || []).includes(document.querySelector(".name")?.innerText);
-  const won =
-    (isTeamA && m.winning_team === "A") ||
-    (!isTeamA && m.winning_team === "B");
+  const won = m.player_team === m.winning_team;
 
   const resultBadge = won
     ? `<span class="delta-positive">Ganó</span>`

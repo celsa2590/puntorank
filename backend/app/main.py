@@ -1795,6 +1795,13 @@ def get_player_matches_history(player_id: int):
                     c.name AS club_name,
                     mr.score,
                     mr.winning_team,
+                    (
+                        SELECT mp2.team
+                        FROM match_players mp2
+                        WHERE mp2.match_id = m.id
+                          AND mp2.player_id = %s
+                        LIMIT 1
+                    ) AS player_team,
                     ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'A') AS team_a,
                     ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'B') AS team_b
                 FROM matches m
@@ -1817,7 +1824,7 @@ def get_player_matches_history(player_id: int):
                     mr.winning_team
                 ORDER BY m.played_at DESC;
                 """,
-                (player_id,),
+                (player_id, player_id),
             )
 
             friendly = cur.fetchall()
