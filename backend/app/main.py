@@ -373,6 +373,14 @@ class AmericanoCreate(BaseModel):
     courts: int
     duration_minutes: int
 
+class LeagueCreate(BaseModel):
+    club_id: int
+    name: str
+    category: str
+    gender: str
+    format: str = "round_robin"
+    start_date: str | None = None
+    end_date: str | None = None
 
 class AmericanoAddPlayer(BaseModel):
     player_id: int | None = None
@@ -1889,3 +1897,73 @@ def get_player_matches_history(player_id: int):
                 "friendly": friendly,
                 "americanos": americanos,
             }
+
+@app.post("/leagues")
+def create_league(data: LeagueCreate):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                INSERT INTO league_seasons
+                    (
+                        club_id,
+                        name,
+                        category,
+                        gender,
+                        format,
+                        start_date,
+                        end_date,
+                        status
+                    )
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, 'draft')
+                RETURNING *;
+                """,
+                (
+                    data.club_id,
+                    data.name,
+                    data.category,
+                    data.gender,
+                    data.format,
+                    data.start_date,
+                    data.end_date,
+                ),
+            )
+
+            league = cur.fetchone()
+
+            conn.commit()
+
+            return league
+
+@app.get("/club/{club_id}/leagues")
+def get_club_leagues(club_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    ls.*,
+
+                    COUNT(lp.id) AS pairs_count
+
+                FROM league_seasons ls
+
+                LEFT JOIN league_pairs lp
+                    ON lp.league_id = ls.id
+
+                WHERE ls.club_id = %s
+
+                GROUP BY ls.id
+
+                ORDER BY ls.created_at DESC;
+                """,
+                (club_id,),
+            )
+
+            return cur.fetchall()
+

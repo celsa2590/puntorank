@@ -1,0 +1,240 @@
+Crear Punto Break
+1. Crear la base de datos en Render
+Paso 1: entrar a tu dashboard
+Ir a: https://dashboard.render.com
+Click en “New +”
+Paso 2: seleccionar base de datos
+Click en “PostgreSQL”
+Paso 3: completar datos
+
+Te va a pedir algo así:
+
+Name:
+puntorank-db
+Database:
+puntorank
+User:
+puntorank
+Region:
+elige la misma donde tienes tus servicios (ej: Oregon o Frankfurt)
+Plan:
+selecciona Free (para empezar)
+
+Paso 4: crear
+
+Click en “Create Database”
+
+⏳ Espera 1–2 minutos
+
+🔌 2. Obtener los datos de conexión
+
+Una vez creada, entra a la DB y verás:
+
+Host: dpg-d7r6dtvlk1mc73d0dvt0-a
+Port: 5432
+Database: puntorank
+User: puntorank
+Password: kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG
+External Database URL: postgresql://puntorank:kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG@dpg-d7r6dtvlk1mc73d0dvt0-a.oregon-postgres.render.com/puntorank
+Internal Database URL: postgresql://puntorank:kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG@dpg-d7r6dtvlk1mc73d0dvt0-a/puntorank
+PSQL Command: PGPASSWORD=kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG psql -h dpg-d7r6dtvlk1mc73d0dvt0-a.oregon-postgres.render.com -U puntorank puntorank
+
+Comando para conectarse a la DB
+psql "postgresql://puntorank:kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG@dpg-d7r6dtvlk1mc73d0dvt0-a.oregon-postgres.render.com/puntorank"
+
+Crear tablas:
+clubs
+CREATE TABLE clubs (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    city TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+players (incluye fantasmas)
+CREATE TABLE players (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    club_id INT REFERENCES clubs(id),
+    is_registered BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+club_events (🔥 clave)
+CREATE TABLE club_events (
+    id SERIAL PRIMARY KEY,
+    club_id INT REFERENCES clubs(id),
+    name TEXT NOT NULL,
+    event_type TEXT, -- americano, cuadrangular, hexagonal, libre
+    category TEXT,   -- D, C, B, 4ta
+    gender TEXT,     -- femenino, masculino, mixto
+    event_date DATE,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+matches
+CREATE TABLE matches (
+    id SERIAL PRIMARY KEY,
+    club_id INT REFERENCES clubs(id),
+    event_id INT REFERENCES club_events(id), -- NULL = partido libre
+    match_type TEXT DEFAULT 'standard', -- standard, americano_short, etc
+    status TEXT DEFAULT 'pending', 
+    created_by INT REFERENCES players(id),
+    played_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+match_players
+CREATE TABLE match_players (
+    id SERIAL PRIMARY KEY,
+    match_id INT REFERENCES matches(id),
+    player_id INT REFERENCES players(id),
+    team TEXT -- 'A' o 'B'
+);
+
+
+match_results
+CREATE TABLE match_results (
+    id SERIAL PRIMARY KEY,
+    match_id INT REFERENCES matches(id),
+    score TEXT -- ejemplo: "6-4 6-3"
+);
+
+
+match_confirmations
+CREATE TABLE match_confirmations (
+    id SERIAL PRIMARY KEY,
+    match_id INT REFERENCES matches(id),
+    player_id INT REFERENCES players(id),
+    confirmed BOOLEAN,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+
+Probar que funciona
+Inserta un club:
+INSERT INTO clubs (name, city)
+VALUES ('Espacio Active', 'Santiago');
+
+
+Estados del partido
+pending    → recién cargado
+confirmed  → ambos lados validaron
+disputed   → alguien rechazó
+approved   → club validó
+rejected   → club lo anuló
+
+
+Peso de partidos (muy importante)
+standard → peso 1.0
+americano_short → peso 0.5
+hexagonal → 0.75
+cuadrangular → 1.0
+
+
+Configurar backend
+mkdir -p ~/proyectos/puntorank/backend/app
+cd ~/proyectos/puntorank/backend
+python3 -m venv venv
+source venv/bin/activate
+pip install fastapi uvicorn psycopg2-binary python-dotenv
+pip freeze > requirements.txt
+
+
+nano app/main.py
+pego el codigo
+
+nano .env
+DATABASE_URL=postgresql://puntorank:kcZPu3EeGMv2T3JUpBYbzRdu80Y14BcG@dpg-d7r6dtvlk1mc73d0dvt0-a.oregon-postgres.render.com/puntorank?sslmode=require
+
+Probar local
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+Abrir
+http://localhost:8000/docs
+
+
+[
+  {
+    "id": 1,
+    "name": "Celsa Sánchez",
+    "club_id": 1,
+    "club_name": "Espacio Active",
+    "is_registered": true,
+    "created_at": "2026-05-03T18:50:01.328515"
+  },
+  {
+    "id": 2,
+    "name": "Jugadora 2",
+    "club_id": 1,
+    "club_name": "Espacio Active",
+    "is_registered": false,
+    "created_at": "2026-05-03T18:52:34.212533"
+  },
+  {
+    "id": 3,
+    "name": "Jugadora 3",
+    "club_id": 1,
+    "club_name": "Espacio Active",
+    "is_registered": false,
+    "created_at": "2026-05-03T18:53:03.908702"
+  },
+  {
+    "id": 4,
+    "name": "Jugadora 4",
+    "club_id": 1,
+    "club_name": "Espacio Active",
+    "is_registered": false,
+    "created_at": "2026-05-03T18:53:17.732384"
+  }
+]
+
+
+
+data.forEach((player, index) => {
+data.forEach((player, index) => {
+
+
+
+Crear proyecto en git
+cd ~/Documentos/proyectos/puntorank
+git init
+
+nano .gitignore
+backend/venv/
+backend/.env
+__pycache__/
+*.pyc
+
+git add .
+git commit -m "MVP inicial PuntoRank"
+
+Crear repo en github: puntorank
+
+git branch -M main
+git remote add origin https://github.com/celsa2590/puntorank
+git push -u origin main
+
+
+https://puntorank-backend.onrender.com
+
+Frontend: https://puntorank-frontend.onrender.com
+
+
+subir un partido amistoso:
+curl -X POST https://puntorank-backend.onrender.com/matches/report -H "Content-Type: application/json" -d '{
+  "club_id": 1,
+  "match_type": "standard",
+  "score": "6-4",
+  "winning_team": "A",
+  "category": "5ta",
+  "players": [
+    {"player_id": 1, "team": "A"},
+    {"player_id": 17, "team": "A"},
+    {"player_id": 18, "team": "B"},
+    {"player_id": 19, "team": "B"}
+  ]
+}'
+
