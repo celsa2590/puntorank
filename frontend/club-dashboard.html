@@ -110,7 +110,44 @@
       <div class="title">Historial</div>
       <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
     </a>
+
+<div class="card">
+  <h2>Ligas</h2>
+
+  <button onclick="showCreateLeague()">
+    Crear liga
+  </button>
+
+  <div id="createLeagueBox" style="display:none; margin-top:16px;">
+    <input id="leagueName" placeholder="Nombre liga">
+
+    <select id="leagueCategory">
+      <option>6ta</option>
+      <option>5ta</option>
+      <option>4ta</option>
+      <option>3era</option>
+      <option>2da</option>
+      <option>1era</option>
+    </select>
+
+    <select id="leagueGender">
+      <option value="femenino">Femenino</option>
+      <option value="masculino">Masculino</option>
+    </select>
+
+    <button onclick="createLeague()">
+      Guardar liga
+    </button>
   </div>
+
+  <div id="leaguesList" style="margin-top:18px;">
+    Cargando ligas...
+  </div>
+</div>
+
+  </div>
+
+
 
   <button class="logout" onclick="logout()">Cerrar sesión</button>
 
@@ -129,6 +166,36 @@
     localStorage.removeItem("club_name");
     window.location.href = "club-login.html";
   }
+
+async function loadLeagues() {
+  const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
+  const leagues = await response.json();
+
+  const container = document.getElementById("leaguesList");
+
+  if (leagues.length === 0) {
+    container.innerHTML = "Aún no existen ligas.";
+    return;
+  }
+
+  container.innerHTML = leagues.map(l => `
+    <div class="row">
+      <strong>${l.name}</strong><br>
+
+      <span class="meta">
+        ${l.category} · ${l.gender}<br>
+        Parejas: ${l.pairs_count}<br>
+        Estado: ${l.status}
+      </span><br>
+
+      <a class="btn" href="league-view.html?id=${l.id}">
+        Abrir liga
+      </a>
+    </div>
+  `).join("");
+}
+
+loadLeagues();
 </script>
 
 </body>
