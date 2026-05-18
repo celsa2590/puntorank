@@ -2109,3 +2109,73 @@ def get_league_matches(league_id: int):
             )
 
             return cur.fetchall()
+
+@app.post("/leagues/{league_id}/pairs")
+def create_league_pair(league_id: int, data: LeaguePairCreate):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                INSERT INTO league_pairs
+                    (
+                        league_id,
+                        player_1_id,
+                        player_2_id,
+                        pair_name
+                    )
+                VALUES
+                    (%s, %s, %s, %s)
+                RETURNING *;
+                """,
+                (
+                    league_id,
+                    data.player_1_id,
+                    data.player_2_id,
+                    data.pair_name,
+                ),
+            )
+
+            pair = cur.fetchone()
+
+            conn.commit()
+
+            return pair
+
+@app.get("/leagues/{league_id}/pairs")
+def get_league_pairs(league_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    lp.id,
+                    lp.pair_name,
+
+                    p1.name AS player_1_name,
+                    p2.name AS player_2_name,
+
+                    lp.player_1_id,
+                    lp.player_2_id
+
+                FROM league_pairs lp
+
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
+
+                WHERE lp.league_id = %s
+
+                ORDER BY lp.id;
+                """,
+                (league_id,),
+            )
+
+            return cur.fetchall()
+
+
