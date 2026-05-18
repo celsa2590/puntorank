@@ -73,6 +73,53 @@
       cursor: pointer;
       font-weight: 800;
     }
+
+.row {
+  border-bottom: 1px solid #333;
+  padding: 12px 0;
+}
+
+.meta {
+  color: #aaa;
+  line-height: 1.4;
+  font-size: 14px;
+}
+
+.btn {
+  display: inline-block;
+  margin-top: 10px;
+  background: #8dff9f;
+  color: #111;
+  padding: 10px 14px;
+  border-radius: 12px;
+  text-decoration: none;
+  font-weight: 900;
+}
+
+input,
+select {
+  width: 100%;
+  margin-top: 8px;
+  margin-bottom: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #333;
+  background: #111;
+  color: white;
+  box-sizing: border-box;
+}
+
+button {
+  background: #8dff9f;
+  color: #111;
+  border: none;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+
   </style>
 </head>
 <body>
@@ -154,6 +201,7 @@
 <script>
   const clubId = localStorage.getItem("club_id");
   const clubName = localStorage.getItem("club_name");
+  const API_URL = "https://puntorank-backend.onrender.com";
 
   if (!clubId) {
     window.location.href = "club-login.html";
@@ -166,6 +214,42 @@
     localStorage.removeItem("club_name");
     window.location.href = "club-login.html";
   }
+
+function showCreateLeague() {
+  const box = document.getElementById("createLeagueBox");
+
+  box.style.display =
+    box.style.display === "none"
+      ? "block"
+      : "none";
+}
+
+async function createLeague() {
+
+  const response = await fetch(`${API_URL}/leagues`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      club_id: clubId,
+      name: document.getElementById("leagueName").value,
+      category: document.getElementById("leagueCategory").value,
+      gender: document.getElementById("leagueGender").value
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo crear la liga.");
+    return;
+  }
+
+  document.getElementById("leagueName").value = "";
+
+  await loadLeagues();
+}
 
 async function loadLeagues() {
   const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
