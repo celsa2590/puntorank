@@ -1967,3 +1967,145 @@ def get_club_leagues(club_id: int):
 
             return cur.fetchall()
 
+@app.post("/leagues/{league_id}/generate-fixture")
+def generate_league_fixture(league_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT id
+                FROM league_pairs
+                WHERE league_id = %s
+                ORDER BY id;
+                """,
+                (league_id,),
+            )
+
+            pairs = [r["id"] for r in cur.fetchall()]
+
+            if len(pairs) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Se necesitan al menos 2 parejas para generar fixture",
+                )
+
+            cur.execute(
+                """
+                DELETE FROM league_matches
+                WHERE league_id = %s;
+                """,
+                (league_id,),
+            )
+
+            pairs_work = pairs.copy()
+
+            if len(pairs_work) % 2 != 0:
+                pairs_work.append(None)
+
+            n = len(pairs_work)
+            rounds_needed = n - 1
+            matches_per_round = n // 2
+
+            matches_created = 0
+
+            for round_number in range(1, rounds_needed + 1):
+
+                for i in range(matches_per_round):
+
+                    pair_a = pairs_work[i]
+                    pair_b = pairs_work[n - 1 - i]
+
+                    if pair_a is not None and pair_b is not None:
+                        cur.execute(
+                            """
+                            INSERT INTO league_matches
+                                (league_id, round_number, pair_a_id, pair_b_id)
+                            VALUES
+                                (%s, %s, %s, %s);
+                            """,
+                            (
+                                league_id,
+                                round_number,
+                                pair_a,
+                                pair_b,
+                            ),
+                        )
+
+                        matches_created += 1
+
+                pairs_work = (
+                    [pairs_work[0]]
+                    + [pairs_work[-1]]
+                    + pairs_work[1:-1]
+                )
+
+            cur.execute(
+                """
+                UPDATE league_seasons
+                SET status = 'scheduled'
+                WHERE id = %s;
+                """,
+                (league_id,),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Fixture generado",
+                "rounds_created": rounds_needed,
+                "matches_created": matches_created,
+            }
+
+@app.get("/leagues/{league_id}/matches")
+def get_league_matches(league_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    lm.id,
+                    lm.round_number,
+                    lm.score,
+                    lm.status,
+                    lm.played_at,
+
+                    pa.id AS pair_a_id,
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+
+                    pb.id AS pair_b_id,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                    lm.winner_pair_id
+
+                FROM league_matches lm
+
+                JOIN league_pairs pa
+                    ON pa.id = lm.pair_a_id
+
+                JOIN players p1a
+                    ON p1a.id = pa.player_1_id
+
+                JOIN players p2a
+                    ON p2a.id = pa.player_2_id
+
+                JOIN league_pairs pb
+                    ON pb.id = lm.pair_b_id
+
+                JOIN players p1b
+                    ON p1b.id = pb.player_1_id
+
+                JOIN players p2b
+                    ON p2b.id = pb.player_2_id
+
+                WHERE lm.league_id = %s
+
+                ORDER BY lm.round_number, lm.id;
+                """,
+                (league_id,),
+            )
+
+            return cur.fetchall()
