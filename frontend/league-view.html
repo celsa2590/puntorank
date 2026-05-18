@@ -132,6 +132,7 @@ const API_URL = "https://puntorank-backend.onrender.com";
 
 const params = new URLSearchParams(window.location.search);
 const leagueId = params.get("id");
+const clubId = localStorage.getItem("club_id");
 let players = [];
 
 
@@ -140,7 +141,7 @@ if (!leagueId) {
 }
 
 async function loadLeague() {
-  const response = await fetch(`${API_URL}/club/1/leagues`);
+  const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
   const leagues = await response.json();
 
   const league = leagues.find(l => l.id == leagueId);
@@ -149,6 +150,8 @@ async function loadLeague() {
     document.getElementById("leagueDetail").innerHTML = "Liga no encontrada.";
     return;
   }
+
+window.leagueStatus = league.status;
 
   document.getElementById("leagueDetail").innerHTML = `
     Nombre: ${league.name}<br>
@@ -180,6 +183,18 @@ async function loadPairs() {
 }
 
 async function generateFixture() {
+
+const matchesResponse = await fetch(
+  `${API_URL}/leagues/${leagueId}/matches`
+);
+
+const existingMatches = await matchesResponse.json();
+
+if (existingMatches.length > 0) {
+  alert("El fixture ya fue generado.");
+  return;
+}
+
   const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-fixture`, {
     method: "POST"
   });
@@ -233,7 +248,14 @@ async function loadMatches() {
 }
 
 async function saveLeagueResult(matchId, winnerPairId) {
+
+if (window.leagueStatus === "completed") {
+  alert("No puedes editar resultados de una liga finalizada.");
+  return;
+}
+
   const score = document.getElementById(`score_${matchId}`).value.trim();
+
 
   if (!score) {
     alert("Debes ingresar el resultado.");
@@ -299,14 +321,17 @@ async function finishLeague() {
   document.getElementById("finishMessage").innerHTML =
     "✅ Liga finalizada correctamente.";
 
+window.leagueStatus = "completed";
+
   await loadLeague();
   await loadStandings();
+  await loadMatches();
 }
 
 async function loadPlayers() {
 
   const response = await fetch(
-    `${API_URL}/clubs/1/players`
+    `${API_URL}/clubs/${clubId}/players`
   );
 
   players = await response.json();
@@ -341,6 +366,33 @@ async function createPair() {
     alert("No puedes seleccionar la misma jugadora.");
     return;
   }
+
+const existingPairsResponse = await fetch(`${API_URL}/leagues/${leagueId}/pairs`);
+const existingPairs = await existingPairsResponse.json();
+
+const alreadyExists = existingPairs.some(pair =>
+  (pair.player_1_id === player1 && pair.player_2_id === player2) ||
+  (pair.player_1_id === player2 && pair.player_2_id === player1)
+);
+
+if (alreadyExists) {
+  alert("Esta pareja ya está inscrita en la liga.");
+  return;
+}
+
+const matchesResponse = await fetch(
+  `${API_URL}/leagues/${leagueId}/matches`
+);
+
+const matches = await matchesResponse.json();
+
+if (matches.length > 0) {
+  alert(
+    "No puedes agregar parejas después de generar el fixture."
+  );
+  return;
+}
+
 
   const response = await fetch(
     `${API_URL}/leagues/${leagueId}/pairs`,
