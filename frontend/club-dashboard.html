@@ -140,32 +140,22 @@ button {
       <div class="desc">Crea americanos por categoría, canchas y duración. Genera partidos y tabla en vivo.</div>
     </a>
 
-    <a class="card" href="#">
-      <div class="icon">📅</div>
-      <div class="title">Crear Liga</div>
-      <div class="desc">Define jugadores, categoría, días y horarios para generar una liga interna.</div>
-    </a>
-
-    <a class="card" href="#">
-      <div class="icon">🏆</div>
-      <div class="title">Crear Torneo</div>
-      <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
-    </a>
-
-    <a class="card" href="club-history.html">
-      <div class="icon">📜</div>
-      <div class="title">Historial</div>
-      <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
-    </a>
 
 <div class="card">
-  <h2>Ligas</h2>
+  <div class="icon">📅</div>
 
-  <button onclick="showCreateLeague()">
-    Crear liga
+  <div class="title">Crear Liga</div>
+
+  <div class="desc">
+    Define jugadores, categoría, días y horarios para generar una liga interna.
+  </div>
+
+  <button onclick="showCreateLeague()" style="margin-top:14px;">
+    Nueva liga
   </button>
 
   <div id="createLeagueBox" style="display:none; margin-top:16px;">
+
     <input id="leagueName" placeholder="Nombre liga">
 
     <select id="leagueCategory">
@@ -191,6 +181,19 @@ button {
     Cargando ligas...
   </div>
 </div>
+
+
+    <a class="card" href="#">
+      <div class="icon">🏆</div>
+      <div class="title">Crear Torneo</div>
+      <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
+    </a>
+
+    <a class="card" href="club-history.html">
+      <div class="icon">📜</div>
+      <div class="title">Historial</div>
+      <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
+    </a>
 
   </div>
 
