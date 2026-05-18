@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Ligas</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 38px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .card {
+      background: rgba(26,26,26,0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+      max-width: 850px;
+    }
+
+    .meta {
+      color: #aaa;
+      line-height: 1.5;
+    }
+
+    .row {
+      border-bottom: 1px solid #333;
+      padding: 14px 0;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+
+    button, .btn {
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    .secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+
+<a class="btn secondary" href="club-dashboard.html">← Volver al panel</a>
+
+<div class="brand">Ligas</div>
+<div class="meta" id="clubLabel"></div>
+
+<div class="card">
+  <h2>Nueva liga</h2>
+
+  <input id="leagueName" placeholder="Nombre liga">
+
+  <select id="leagueCategory">
+    <option>6ta</option>
+    <option>5ta</option>
+    <option>4ta</option>
+    <option>3era</option>
+    <option>2da</option>
+    <option>1era</option>
+  </select>
+
+  <select id="leagueGender">
+    <option value="femenino">Femenino</option>
+    <option value="masculino">Masculino</option>
+  </select>
+
+  <button onclick="createLeague()">Crear liga</button>
+</div>
+
+<div class="card">
+  <h2>Ligas en juego</h2>
+  <div id="activeLeagues">Cargando...</div>
+</div>
+
+<div class="card">
+  <h2>Ligas finalizadas</h2>
+  <div id="completedLeagues">Cargando...</div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+
+const clubId = localStorage.getItem("club_id");
+const clubName = localStorage.getItem("club_name");
+
+if (!clubId) {
+  window.location.href = "club-login.html";
+}
+
+document.getElementById("clubLabel").innerText = `Club: ${clubName}`;
+
+async function loadLeagues() {
+  const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
+  const leagues = await response.json();
+
+  const active = leagues.filter(l => l.status !== "completed");
+  const completed = leagues.filter(l => l.status === "completed");
+
+  renderLeagueList(active, "activeLeagues", "No hay ligas en juego.");
+  renderLeagueList(completed, "completedLeagues", "No hay ligas finalizadas.");
+}
+
+function renderLeagueList(leagues, containerId, emptyText) {
+  const container = document.getElementById(containerId);
+
+  if (leagues.length === 0) {
+    container.innerHTML = emptyText;
+    return;
+  }
+
+  container.innerHTML = leagues.map(l => `
+    <div class="row">
+      <strong>${l.name}</strong><br>
+
+      <span class="meta">
+        ${l.category} · ${l.gender}<br>
+        Parejas: ${l.pairs_count}<br>
+        Estado: ${l.status}
+      </span><br>
+
+      <a class="btn" href="league-view.html?id=${l.id}">
+        Abrir liga
+      </a>
+    </div>
+  `).join("");
+}
+
+async function createLeague() {
+  const name = document.getElementById("leagueName").value.trim();
+
+  if (!name) {
+    alert("Debes ingresar el nombre de la liga.");
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/leagues`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      club_id: parseInt(clubId),
+      name,
+      category: document.getElementById("leagueCategory").value,
+      gender: document.getElementById("leagueGender").value
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo crear la liga.");
+    return;
+  }
+
+  document.getElementById("leagueName").value = "";
+  await loadLeagues();
+}
+
+loadLeagues();
+</script>
+
+</body>
+</html>
