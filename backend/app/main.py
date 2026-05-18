@@ -2217,3 +2217,66 @@ def save_league_match_result(match_id: int, data: LeagueMatchResult):
             conn.commit()
 
             return match
+
+@app.get("/leagues/{league_id}/standings")
+def get_league_standings(league_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    lp.id AS pair_id,
+                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.winner_pair_id = lp.id
+                    ) AS wins,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                          AND lm.winner_pair_id IS NOT NULL
+                          AND lm.winner_pair_id <> lp.id
+                    ) AS losses,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                    ) AS played,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.winner_pair_id = lp.id THEN 3
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS points
+
+                FROM league_pairs lp
+
+                LEFT JOIN league_matches lm
+                    ON lm.pair_a_id = lp.id
+                    OR lm.pair_b_id = lp.id
+
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
+
+                WHERE lp.league_id = %s
+
+                GROUP BY
+                    lp.id,
+                    lp.pair_name,
+                    p1.name,
+                    p2.name
+
+                ORDER BY points DESC, wins DESC, pair_name ASC;
+                """,
+                (league_id,),
+            )
+
+            return cur.fetchall()
