@@ -404,6 +404,10 @@ class LeaguePairCreate(BaseModel):
     player_2_id: int
     pair_name: str | None = None
 
+class LeagueMatchResult(BaseModel):
+    score: str
+    winner_pair_id: int
+
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
         ensure_player_rating(cur, player_data.player_id)
@@ -439,8 +443,6 @@ def get_or_create_player(cur, player_data, club_id: int):
     ensure_player_rating(cur, player_id)
 
     return player_id
-
-
 
 
 @app.get("/")
@@ -2183,3 +2185,35 @@ def get_league_pairs(league_id: int):
             return cur.fetchall()
 
 
+@app.post("/league-matches/{match_id}/result")
+def save_league_match_result(match_id: int, data: LeagueMatchResult):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                UPDATE league_matches
+                SET
+                    score = %s,
+                    winner_pair_id = %s,
+                    status = 'completed',
+                    played_at = NOW()
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (
+                    data.score,
+                    data.winner_pair_id,
+                    match_id,
+                ),
+            )
+
+            match = cur.fetchone()
+
+            if not match:
+                raise HTTPException(status_code=404, detail="Partido de liga no encontrado")
+
+            conn.commit()
+
+            return match
