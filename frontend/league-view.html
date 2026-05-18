@@ -66,6 +66,18 @@
       color: white;
       border: 1px solid #333;
     }
+
+input,
+select {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid #333;
+  background: #111;
+  color: white;
+  margin-top: 8px;
+  margin-right: 8px;
+}
+
   </style>
 </head>
 <body>
@@ -81,24 +93,26 @@
 
 <div class="card">
   <h2>Parejas inscritas</h2>
-<div style="margin-bottom:18px;">
 
-  <select id="player1Select"></select>
+  <div style="margin-bottom:18px;">
+    <select id="player1Select"></select>
+    <select id="player2Select"></select>
 
-  <select id="player2Select"></select>
+    <input
+      id="pairName"
+      placeholder="Nombre pareja opcional"
+    >
 
-  <input
-    id="pairName"
-    placeholder="Nombre pareja (opcional)"
-  >
+    <button onclick="createPair()">
+      Agregar pareja
+    </button>
+  </div>
 
-  <button onclick="createPair()">
-    Agregar pareja
-  </button>
-
-</div>
   <div id="pairsList">Cargando parejas...</div>
 </div>
+
+
+
 
 <div class="card">
   <h2>Fixture</h2>
