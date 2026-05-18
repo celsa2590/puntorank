@@ -399,6 +399,10 @@ class AmericanoMatchResult(BaseModel):
     pair_a_games: int
     pair_b_games: int
 
+class LeaguePairCreate(BaseModel):
+    player_1_id: int
+    player_2_id: int
+    pair_name: str | None = None
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
