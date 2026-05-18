@@ -2404,3 +2404,41 @@ def finish_league(league_id: int):
                 "league": result,
             }
 
+@app.get("/clubs/{club_id}/players")
+def get_club_players(club_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.email,
+                    p.gender,
+                    p.category,
+                    p.side,
+                    p.is_registered,
+                    ROUND(COALESCE(pr.rating, 1000), 2) AS rating
+                FROM players p
+                LEFT JOIN player_ratings pr
+                    ON pr.player_id = p.id
+                LEFT JOIN player_clubs pc
+                    ON pc.player_id = p.id
+                WHERE p.club_id = %s
+                   OR pc.club_id = %s
+                GROUP BY
+                    p.id,
+                    p.name,
+                    p.email,
+                    p.gender,
+                    p.category,
+                    p.side,
+                    p.is_registered,
+                    pr.rating
+                ORDER BY p.name;
+                """,
+                (club_id, club_id),
+            )
+
+            return cur.fetchall()
+
