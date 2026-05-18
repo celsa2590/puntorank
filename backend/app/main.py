@@ -2280,3 +2280,127 @@ def get_league_standings(league_id: int):
             )
 
             return cur.fetchall()
+
+@app.post("/leagues/{league_id}/finish")
+def finish_league(league_id: int):
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT id, status
+                FROM league_seasons
+                WHERE id = %s;
+                """,
+                (league_id,),
+            )
+
+            league = cur.fetchone()
+
+            if not league:
+                raise HTTPException(status_code=404, detail="Liga no encontrada")
+
+            if league["status"] == "completed":
+                raise HTTPException(status_code=400, detail="Esta liga ya fue finalizada")
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pending
+                FROM league_matches
+                WHERE league_id = %s
+                  AND status <> 'completed';
+                """,
+                (league_id,),
+            )
+
+            pending = cur.fetchone()["pending"]
+
+            if pending > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Faltan {pending} partidos por completar",
+                )
+
+            cur.execute(
+                """
+                SELECT
+                    lm.id,
+                    lm.winner_pair_id,
+                    lm.rating_processed,
+
+                    pa.id AS pair_a_id,
+                    pa.player_1_id AS a1,
+                    pa.player_2_id AS a2,
+
+                    pb.id AS pair_b_id,
+                    pb.player_1_id AS b1,
+                    pb.player_2_id AS b2
+
+                FROM league_matches lm
+
+                JOIN league_pairs pa
+                    ON pa.id = lm.pair_a_id
+
+                JOIN league_pairs pb
+                    ON pb.id = lm.pair_b_id
+
+                WHERE lm.league_id = %s;
+                """,
+                (league_id,),
+            )
+
+            matches = cur.fetchall()
+
+            for match in matches:
+
+                if match["rating_processed"]:
+                    continue
+
+                winner = "A" if match["winner_pair_id"] == match["pair_a_id"] else "B"
+
+                update_rating_pair_vs_pair(
+                    cur=cur,
+                    player_ids_team_a=[
+                        match["a1"],
+                        match["a2"],
+                    ],
+                    player_ids_team_b=[
+                        match["b1"],
+                        match["b2"],
+                    ],
+                    winner=winner,
+                    match_id=None,
+                    source_type="league_match",
+                    source_id=match["id"],
+                    multiplier=1.5,
+                )
+
+                cur.execute(
+                    """
+                    UPDATE league_matches
+                    SET rating_processed = TRUE
+                    WHERE id = %s;
+                    """,
+                    (match["id"],),
+                )
+
+            cur.execute(
+                """
+                UPDATE league_seasons
+                SET status = 'completed'
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (league_id,),
+            )
+
+            result = cur.fetchone()
+
+            conn.commit()
+
+            return {
+                "message": "Liga finalizada correctamente",
+                "league": result,
+            }
+
