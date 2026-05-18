@@ -140,47 +140,13 @@ button {
       <div class="desc">Crea americanos por categoría, canchas y duración. Genera partidos y tabla en vivo.</div>
     </a>
 
-
-<div class="card">
+<a class="card" href="leagues.html">
   <div class="icon">📅</div>
-
-  <div class="title">Crear Liga</div>
-
+  <div class="title">Ligas</div>
   <div class="desc">
-    Define jugadores, categoría, días y horarios para generar una liga interna.
+    Crea ligas, edita parejas, genera fixture y carga resultados.
   </div>
-
-  <button onclick="showCreateLeague()" style="margin-top:14px;">
-    Nueva liga
-  </button>
-
-  <div id="createLeagueBox" style="display:none; margin-top:16px;">
-
-    <input id="leagueName" placeholder="Nombre liga">
-
-    <select id="leagueCategory">
-      <option>6ta</option>
-      <option>5ta</option>
-      <option>4ta</option>
-      <option>3era</option>
-      <option>2da</option>
-      <option>1era</option>
-    </select>
-
-    <select id="leagueGender">
-      <option value="femenino">Femenino</option>
-      <option value="masculino">Masculino</option>
-    </select>
-
-    <button onclick="createLeague()">
-      Guardar liga
-    </button>
-  </div>
-
-  <div id="leaguesList" style="margin-top:18px;">
-    Cargando ligas...
-  </div>
-</div>
+</a>
 
 
     <a class="card" href="#">
@@ -282,7 +248,6 @@ async function loadLeagues() {
   `).join("");
 }
 
-loadLeagues();
 </script>
 
 </body>
