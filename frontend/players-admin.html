@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Jugadores</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 38px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .meta {
+      color: #aaa;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: rgba(26,26,26,0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+      max-width: 900px;
+    }
+
+    .row {
+      border-bottom: 1px solid #333;
+      padding: 14px 0;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+
+    button,
+    .btn {
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    .secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+
+<a class="btn secondary" href="club-dashboard.html">
+  ← Volver al panel
+</a>
+
+<div class="brand">Jugadores</div>
+
+<div class="meta" id="clubLabel"></div>
+
+<div class="card">
+  <h2>Crear jugador</h2>
+
+  <input id="playerName" placeholder="Nombre completo">
+
+  <input id="playerEmail" placeholder="Email">
+
+  <select id="playerGender">
+    <option value="femenino">Femenino</option>
+    <option value="masculino">Masculino</option>
+  </select>
+
+  <select id="playerCategory">
+    <option>6ta</option>
+    <option>5ta</option>
+    <option>4ta</option>
+    <option>3era</option>
+    <option>2da</option>
+    <option>1era</option>
+  </select>
+
+  <select id="playerSide">
+    <option value="drive">Drive</option>
+    <option value="reves">Revés</option>
+  </select>
+
+  <button onclick="createPlayer()">
+    Crear jugador
+  </button>
+</div>
+
+<div class="card">
+  <h2>Jugadores registrados</h2>
+
+  <div id="playersList">
+    Cargando jugadores...
+  </div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+
+const clubId = localStorage.getItem("club_id");
+const clubName = localStorage.getItem("club_name");
+
+if (!clubId) {
+  window.location.href = "club-login.html";
+}
+
+document.getElementById("clubLabel").innerText =
+  `Club: ${clubName}`;
+
+async function loadPlayers() {
+
+  const response = await fetch(
+    `${API_URL}/clubs/${clubId}/players`
+  );
+
+  const players = await response.json();
+
+  const container =
+    document.getElementById("playersList");
+
+  if (players.length === 0) {
+    container.innerHTML =
+      "Aún no hay jugadores registrados.";
+    return;
+  }
+
+  container.innerHTML = players.map(p => `
+    <div class="row">
+
+      <strong>
+        ${p.name}
+      </strong><br>
+
+      <span class="meta">
+        ${p.category} · ${p.gender}<br>
+        ${p.side}<br>
+        Rating: ${p.rating || 1000}
+      </span><br>
+
+      <a class="btn" href="player-profile.html?id=${p.id}">
+        Ver perfil
+      </a>
+
+    </div>
+  `).join("");
+}
+
+async function createPlayer() {
+
+  const response = await fetch(
+    `${API_URL}/register`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: document.getElementById("playerName").value,
+        email: document.getElementById("playerEmail").value,
+        club_id: parseInt(clubId),
+        gender: document.getElementById("playerGender").value,
+        category: document.getElementById("playerCategory").value,
+        side: document.getElementById("playerSide").value
+      })
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo crear jugador.");
+    return;
+  }
+
+  document.getElementById("playerName").value = "";
+  document.getElementById("playerEmail").value = "";
+
+  await loadPlayers();
+}
+
+loadPlayers();
+</script>
+
+</body>
+</html>
