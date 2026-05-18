@@ -81,6 +81,22 @@
 
 <div class="card">
   <h2>Parejas inscritas</h2>
+<div style="margin-bottom:18px;">
+
+  <select id="player1Select"></select>
+
+  <select id="player2Select"></select>
+
+  <input
+    id="pairName"
+    placeholder="Nombre pareja (opcional)"
+  >
+
+  <button onclick="createPair()">
+    Agregar pareja
+  </button>
+
+</div>
   <div id="pairsList">Cargando parejas...</div>
 </div>
 
@@ -102,6 +118,8 @@ const API_URL = "https://puntorank-backend.onrender.com";
 
 const params = new URLSearchParams(window.location.search);
 const leagueId = params.get("id");
+let players = [];
+
 
 if (!leagueId) {
   alert("Falta id de liga");
@@ -271,10 +289,78 @@ async function finishLeague() {
   await loadStandings();
 }
 
+async function loadPlayers() {
+
+  const response = await fetch(
+    `${API_URL}/clubs/1/players`
+  );
+
+  players = await response.json();
+
+  const p1 = document.getElementById("player1Select");
+  const p2 = document.getElementById("player2Select");
+
+  const options = players.map(p => `
+    <option value="${p.id}">
+      ${p.name}
+    </option>
+  `).join("");
+
+  p1.innerHTML = options;
+  p2.innerHTML = options;
+}
+
+async function createPair() {
+
+  const player1 = parseInt(
+    document.getElementById("player1Select").value
+  );
+
+  const player2 = parseInt(
+    document.getElementById("player2Select").value
+  );
+
+  const pairName =
+    document.getElementById("pairName").value.trim();
+
+  if (player1 === player2) {
+    alert("No puedes seleccionar la misma jugadora.");
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/leagues/${leagueId}/pairs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        player_1_id: player1,
+        player_2_id: player2,
+        pair_name: pairName || null
+      })
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo crear pareja.");
+    return;
+  }
+
+  document.getElementById("pairName").value = "";
+
+  await loadPairs();
+  await loadStandings();
+}
+
 loadLeague();
 loadPairs();
 loadMatches();
 loadStandings();
+loadPlayers();
 </script>
 
 </body>
