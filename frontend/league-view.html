@@ -227,7 +227,7 @@ async function loadMatches() {
 
   container.innerHTML = matches.map(m => `
     <div class="row">
-      <strong>Ronda ${m.round_number}</strong><br>
+      <strong>${getMatchTitle(m)}</strong><br>
       <span class="meta">${m.pair_a_name} vs ${m.pair_b_name}</span><br>
 
       <input
@@ -249,6 +249,16 @@ async function loadMatches() {
       </div>
     </div>
   `).join("");
+}
+
+function getMatchTitle(m) {
+  if (m.phase === "playoff") {
+    const cupName = m.cup === "oro" ? "Copa Oro" : "Copa Plata";
+    const roundName = m.bracket_round === "semifinal" ? "Semifinal" : "Final";
+    return `${cupName} · ${roundName}`;
+  }
+
+  return `Ronda ${m.round_number}`;
 }
 
 async function saveLeagueResult(matchId, winnerPairId) {
