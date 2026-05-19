@@ -2075,6 +2075,9 @@ def get_league_matches(league_id: int):
                 SELECT
                     lm.id,
                     lm.round_number,
+                    lm.phase,
+                    lm.cup,
+                    lm.bracket_round,
                     lm.score,
                     lm.status,
                     lm.played_at,
