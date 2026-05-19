@@ -120,6 +120,10 @@ select {
   <div id="matchesList" style="margin-top:16px;">Cargando partidos...</div>
 </div>
 
+<button onclick="generatePlayoffs()">Generar playoffs</button>
+
+<button onclick="generateFinals()">Generar finales</button>
+
 <div class="card">
   <h2>Tabla de posiciones</h2>
   <button onclick="finishLeague()">Finalizar liga</button>
@@ -419,6 +423,39 @@ if (matches.length > 0) {
   document.getElementById("pairName").value = "";
 
   await loadPairs();
+  await loadStandings();
+}
+
+
+async function generatePlayoffs() {
+  const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-playoffs`, {
+    method: "POST"
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudieron generar playoffs.");
+    return;
+  }
+
+  await loadMatches();
+  await loadStandings();
+}
+
+async function generateFinals() {
+  const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-finals`, {
+    method: "POST"
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudieron generar finales.");
+    return;
+  }
+
+  await loadMatches();
   await loadStandings();
 }
 
