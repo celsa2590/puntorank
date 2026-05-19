@@ -2112,7 +2112,16 @@ def get_league_matches(league_id: int):
 
                 WHERE lm.league_id = %s
 
-                ORDER BY lm.round_number, lm.id;
+                ORDER BY
+                  CASE
+                    WHEN lm.phase = 'regular' THEN 1
+                    WHEN lm.phase = 'playoff' AND lm.bracket_round = 'semifinal' THEN 2
+                    WHEN lm.phase = 'playoff' AND lm.bracket_round = 'final' THEN 3
+                    ELSE 4
+                  END,
+                  lm.round_number,
+                  lm.cup,
+                  lm.id;
                 """,
                 (league_id,),
             )
