@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Torneo</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0f0f0f;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 36px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
+      max-width: 1050px;
+    }
+
+    .row {
+      border-bottom: 1px solid #333;
+      padding: 12px 0;
+    }
+
+    .meta {
+      color: #aaa;
+      line-height: 1.5;
+    }
+
+    input, select {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      margin-top: 8px;
+      margin-right: 8px;
+      margin-bottom: 8px;
+      min-width: 180px;
+    }
+
+    button, .btn {
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 10px;
+      margin-right: 6px;
+    }
+
+    .secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+
+    .danger {
+      background: #ff6b6b;
+      color: #111;
+    }
+
+    .paid { color: #00ff9c; font-weight: bold; }
+    .pending { color: #ffd166; font-weight: bold; }
+    .error { color: #ff6b6b; font-weight: bold; }
+    .ok { color: #8dff9f; font-weight: bold; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #333;
+      padding: 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: #8dff9f;
+    }
+
+    .group-title {
+      color: #8dff9f;
+      font-weight: 900;
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+
+    .small-input {
+      min-width: 110px;
+      width: 130px;
+    }
+  </style>
+</head>
+<body>
+
+<a class="btn secondary" href="tournaments.html">← Volver a torneos</a>
+
+<div class="brand" id="tournamentName">Cargando torneo...</div>
+<div id="tournamentDetail" class="meta"></div>
+
+<div class="card">
+  <h2>Inscribir pareja</h2>
+  <div class="meta">Selecciona jugadores existentes. La creación de jugadores queda fuera de esta sección.</div>
+
+  <select id="player1Select"></select>
+  <select id="player2Select"></select>
+  <input id="pairName" placeholder="Nombre pareja opcional">
+
+  <br>
+
+  <select id="paymentStatus">
+    <option value="pending">Pago pendiente</option>
+    <option value="paid_transfer">Pagado transferencia</option>
+    <option value="paid_card">Pagado TDC</option>
+    <option value="waived">Liberado / invitación</option>
+  </select>
+
+  <select id="paymentMethod">
+    <option value="">Método no definido</option>
+    <option value="transfer">Transferencia</option>
+    <option value="card">TDC</option>
+    <option value="cash">Efectivo</option>
+    <option value="waived">Liberado</option>
+  </select>
+
+  <input id="paymentAmount" type="number" placeholder="Monto">
+  <input id="paymentLink" placeholder="Link de pago">
+  <input id="paymentReference" placeholder="Referencia / comprobante">
+
+  <button onclick="createPair()">Agregar pareja</button>
+  <div id="pairMessage" class="meta" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>Parejas inscritas y pagos</h2>
+  <div id="pairsList">Cargando parejas...</div>
+</div>
+
+<div class="card">
+  <h2>Grupos y partidos</h2>
+
+  <input id="groupsCount" type="number" min="1" value="2" class="small-input">
+  <button onclick="generateGroups()">Generar grupos</button>
+  <button onclick="generateGroupMatches()">Generar partidos de grupos</button>
+  <button onclick="generatePlayoff()">Generar playoff</button>
+  <button onclick="generateFinal()">Generar final</button>
+
+  <div id="actionMessage" class="meta" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>Partidos</h2>
+  <div id="matchesList">Cargando partidos...</div>
+</div>
+
+<div class="card">
+  <h2>Tabla por grupo</h2>
+  <div id="standingsList">Cargando tabla...</div>
+</div>
+
+<div class="card">
+  <h2>Finalizar torneo</h2>
+  <div class="meta">Al finalizar se procesa el rating: grupos 1.5, playoff 1.8 y final 2.0. Además se aplica bonus a campeones y finalistas.</div>
+  <button class="danger" onclick="finishTournament()">Finalizar torneo</button>
+  <div id="finishMessage" class="meta" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>Resumen final</h2>
+  <div id="summaryList">Cargando resumen...</div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+const params = new URLSearchParams(window.location.search);
+const tournamentId = params.get("id");
+const clubId = localStorage.getItem("club_id");
+let players = [];
+let pairs = [];
+let matches = [];
+
+if (!clubId) {
+  window.location.href = "club-login.html";
+}
+
+if (!tournamentId) {
+  alert("Falta id de torneo");
+  window.location.href = "tournaments.html";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function statusLabel(status) {
+  const labels = {
+    draft: "Borrador",
+    registration: "Inscripción",
+    groups_ready: "Grupos listos",
+    group_stage: "Fase de grupos",
+    playoff: "Playoff",
+    completed: "Finalizado",
+    scheduled: "Programado"
+  };
+  return labels[status] || status || "-";
+}
+
+function paymentLabel(status) {
+  const labels = {
+    pending: "Pendiente",
+    paid_transfer: "Pagado transferencia",
+    paid_card: "Pagado TDC",
+    waived: "Liberado",
+    refunded: "Reembolsado"
+  };
+  return labels[status] || status || "Pendiente";
+}
+
+function paymentClass(status) {
+  return status && status !== "pending" ? "paid" : "pending";
+}
+
+async function apiFetch(url, options = {}) {
+  const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.detail || `Error API: ${response.status}`);
+  }
+  return data;
+}
+
+async function loadTournament() {
+  const t = await apiFetch(`${API_URL}/tournament_events/${tournamentId}`);
+  document.getElementById("tournamentName").innerText = t.name;
+  document.getElementById("tournamentDetail").innerHTML = `
+    Categoría: ${escapeHtml(t.category)}<br>
+    Género: ${escapeHtml(t.gender)}<br>
+    Formato: ${escapeHtml(t.format)}<br>
+    Estado: ${statusLabel(t.status)}
+  `;
+}
+
+async function loadPlayers() {
+  players = await apiFetch(`${API_URL}/clubs/${clubId}/players`);
+
+  const options = players.map(p => `
+    <option value="${p.id}">${escapeHtml(p.name)} · ${escapeHtml(p.category || "Sin categoría")} · ${Math.round(p.rating || 1000)}</option>
+  `).join("");
+
+  document.getElementById("player1Select").innerHTML = `<option value="">Jugador 1</option>${options}`;
+  document.getElementById("player2Select").innerHTML = `<option value="">Jugador 2</option>${options}`;
+}
+
+async function loadPairs() {
+  pairs = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/pairs`);
+  const container = document.getElementById("pairsList");
+
+  if (pairs.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay parejas inscritas.</div>`;
+    return;
+  }
+
+  container.innerHTML = pairs.map(p => `
+    <div class="row">
+      <strong>${escapeHtml(p.display_name)}</strong><br>
+      <span class="meta">
+        Grupo: ${escapeHtml(p.group_name || "Sin grupo")}<br>
+        ${escapeHtml(p.player_1_name)} / ${escapeHtml(p.player_2_name)}<br>
+        Pago: <span class="${paymentClass(p.payment_status)}">${paymentLabel(p.payment_status)}</span>
+        ${p.payment_amount ? ` · Monto: ${p.payment_amount}` : ""}
+        ${p.payment_method ? ` · Método: ${escapeHtml(p.payment_method)}` : ""}
+        ${p.payment_reference ? ` · Ref: ${escapeHtml(p.payment_reference)}` : ""}
+        ${p.payment_link ? ` · <a href="${escapeHtml(p.payment_link)}" target="_blank" style="color:#8dff9f;">Link de pago</a>` : ""}
+      </span>
+      <div>
+        <select id="payStatus-${p.id}" class="small-input">
+          <option value="pending" ${p.payment_status === "pending" ? "selected" : ""}>Pendiente</option>
+          <option value="paid_transfer" ${p.payment_status === "paid_transfer" ? "selected" : ""}>Transferencia</option>
+          <option value="paid_card" ${p.payment_status === "paid_card" ? "selected" : ""}>TDC</option>
+          <option value="waived" ${p.payment_status === "waived" ? "selected" : ""}>Liberado</option>
+        </select>
+        <input id="payAmount-${p.id}" class="small-input" type="number" placeholder="Monto" value="${p.payment_amount || ""}">
+        <input id="payLink-${p.id}" placeholder="Link pago" value="${escapeHtml(p.payment_link || "")}">
+        <input id="payReference-${p.id}" placeholder="Referencia" value="${escapeHtml(p.payment_reference || "")}">
+        <button onclick="updatePayment(${p.id})">Actualizar pago</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function createPair() {
+  const message = document.getElementById("pairMessage");
+  message.className = "meta";
+  message.innerText = "Agregando pareja...";
+
+  const payload = {
+    player_1_id: Number(document.getElementById("player1Select").value),
+    player_2_id: Number(document.getElementById("player2Select").value),
+    pair_name: document.getElementById("pairName").value.trim() || null,
+    payment_status: document.getElementById("paymentStatus").value,
+    payment_method: document.getElementById("paymentMethod").value || null,
+    payment_link: document.getElementById("paymentLink").value.trim() || null,
+    payment_reference: document.getElementById("paymentReference").value.trim() || null,
+    payment_amount: document.getElementById("paymentAmount").value ? Number(document.getElementById("paymentAmount").value) : null
+  };
+
+  if (!payload.player_1_id || !payload.player_2_id) {
+    message.className = "error";
+    message.innerText = "Selecciona los dos jugadores.";
+    return;
+  }
+
+  try {
+    await apiFetch(`${API_URL}/tournament_events/${tournamentId}/pairs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    message.className = "ok";
+    message.innerText = "Pareja agregada.";
+    document.getElementById("pairName").value = "";
+    await loadPairs();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function updatePayment(pairId) {
+  const payload = {
+    payment_status: document.getElementById(`payStatus-${pairId}`).value,
+    payment_method: document.getElementById(`payStatus-${pairId}`).value === "paid_card" ? "card" : null,
+    payment_link: document.getElementById(`payLink-${pairId}`).value.trim() || null,
+    payment_reference: document.getElementById(`payReference-${pairId}`).value.trim() || null,
+    payment_amount: document.getElementById(`payAmount-${pairId}`).value ? Number(document.getElementById(`payAmount-${pairId}`).value) : null
+  };
+
+  try {
+    await apiFetch(`${API_URL}/tournament-pairs/${pairId}/payment`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    await loadPairs();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function generateGroups() {
+  const message = document.getElementById("actionMessage");
+  const groupsCount = Number(document.getElementById("groupsCount").value);
+  try {
+    const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/generate-groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups_count: groupsCount })
+    });
+    message.className = "ok";
+    message.innerText = `${data.message}. Grupos: ${data.groups_created}. Parejas asignadas: ${data.pairs_assigned}.`;
+    await refreshAll();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function generateGroupMatches() {
+  const message = document.getElementById("actionMessage");
+  try {
+    const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/generate-group-matches`, { method: "POST" });
+    message.className = "ok";
+    message.innerText = `${data.message}. Partidos creados: ${data.matches_created}.`;
+    await refreshAll();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function generatePlayoff() {
+  const message = document.getElementById("actionMessage");
+  try {
+    const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/generate-playoff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qualifiers_per_group: 2 })
+    });
+    message.className = "ok";
+    message.innerText = `${data.message}. Partidos creados: ${data.matches_created}.`;
+    await refreshAll();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function generateFinal() {
+  const message = document.getElementById("actionMessage");
+  try {
+    const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/generate-final`, { method: "POST" });
+    message.className = "ok";
+    message.innerText = data.message;
+    await refreshAll();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function loadMatches() {
+  matches = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/matches`);
+  const container = document.getElementById("matchesList");
+
+  if (matches.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay partidos generados.</div>`;
+    return;
+  }
+
+  container.innerHTML = matches.map(m => {
+    const phase = m.phase === "group_stage"
+      ? `Grupo ${escapeHtml(m.group_name || "-")}`
+      : `${escapeHtml(m.bracket_round || "Playoff")}`;
+
+    return `
+      <div class="row">
+        <strong>${phase}</strong><br>
+        <span class="meta">${escapeHtml(m.pair_a_name)} vs ${escapeHtml(m.pair_b_name)}</span><br>
+        <span class="meta">Estado: ${statusLabel(m.status)} ${m.score ? `· Resultado: ${escapeHtml(m.score)}` : ""}</span><br>
+
+        <input id="score-${m.id}" class="small-input" placeholder="Ej: 6-4 6-3" value="${escapeHtml(m.score || "")}">
+        <select id="winner-${m.id}">
+          <option value="">Ganador</option>
+          <option value="${m.pair_a_id}" ${m.winner_pair_id === m.pair_a_id ? "selected" : ""}>${escapeHtml(m.pair_a_name)}</option>
+          <option value="${m.pair_b_id}" ${m.winner_pair_id === m.pair_b_id ? "selected" : ""}>${escapeHtml(m.pair_b_name)}</option>
+        </select>
+        <button onclick="saveResult(${m.id})">Guardar resultado</button>
+      </div>
+    `;
+  }).join("");
+}
+
+async function saveResult(matchId) {
+  const score = document.getElementById(`score-${matchId}`).value.trim();
+  const winner = Number(document.getElementById(`winner-${matchId}`).value);
+
+  if (!score || !winner) {
+    alert("Debes ingresar marcador y ganador.");
+    return;
+  }
+
+  try {
+    await apiFetch(`${API_URL}/tournament-matches/${matchId}/result`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ score, winner_pair_id: winner })
+    });
+    await refreshAll();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function loadStandings() {
+  const rows = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/standings`);
+  const container = document.getElementById("standingsList");
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay tabla. Primero genera grupos.</div>`;
+    return;
+  }
+
+  const groups = {};
+  for (const r of rows) {
+    if (!groups[r.group_name]) groups[r.group_name] = [];
+    groups[r.group_name].push(r);
+  }
+
+  container.innerHTML = Object.entries(groups).map(([groupName, groupRows]) => `
+    <div class="group-title">Grupo ${escapeHtml(groupName)}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Pareja</th>
+          <th>PJ</th>
+          <th>G</th>
+          <th>P</th>
+          <th>Pts</th>
+          <th>Sets</th>
+          <th>Games</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${groupRows.map((r, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(r.pair_name)}</td>
+            <td>${r.played}</td>
+            <td>${r.wins}</td>
+            <td>${r.losses}</td>
+            <td>${r.points}</td>
+            <td>${r.sets_for}-${r.sets_against} (${r.sets_diff})</td>
+            <td>${r.games_for}-${r.games_against} (${r.games_diff})</td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `).join("");
+}
+
+async function finishTournament() {
+  const message = document.getElementById("finishMessage");
+  if (!confirm("¿Seguro que quieres finalizar el torneo? Esto procesará el rating.")) return;
+
+  try {
+    const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/finish`, { method: "POST" });
+    message.className = "ok";
+    message.innerText = data.message;
+    await refreshAll();
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+async function loadSummary() {
+  const data = await apiFetch(`${API_URL}/tournament_events/${tournamentId}/summary`);
+  const container = document.getElementById("summaryList");
+
+  const playoff = data.playoff || [];
+  if (playoff.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay resumen de playoff.</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <h3>Resultados finales</h3>
+    ${playoff.map(p => `
+      <div class="row">
+        <strong>${escapeHtml(p.bracket_round || "Playoff")}</strong><br>
+        <span class="meta">
+          ${escapeHtml(p.pair_a_name)} vs ${escapeHtml(p.pair_b_name)}<br>
+          Ganador: ${escapeHtml(p.winner_pair_name || "Pendiente")}<br>
+          Resultado: ${escapeHtml(p.score || "Pendiente")}
+        </span>
+      </div>
+    `).join("")}
+  `;
+}
+
+async function refreshAll() {
+  await loadTournament();
+  await loadPairs();
+  await loadMatches();
+  await loadStandings();
+  await loadSummary();
+}
+
+async function init() {
+  try {
+    await loadPlayers();
+    await refreshAll();
+  } catch (error) {
+    document.getElementById("tournamentName").innerText = "Error cargando torneo";
+    document.getElementById("tournamentDetail").innerHTML = `<span class="error">${error.message}</span>`;
+  }
+}
+
+init();
+</script>
+
+</body>
+</html>
