@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Torneos</title>
+  <style>
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #1b2b22 0%, #0f0f0f 45%);
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .brand {
+      color: #8dff9f;
+      font-size: 38px;
+      font-weight: 900;
+      margin-bottom: 8px;
+    }
+
+    .subtitle, .meta {
+      color: #bbb;
+      line-height: 1.5;
+    }
+
+    .card {
+      background: rgba(26,26,26,0.95);
+      border: 1px solid #333;
+      border-radius: 22px;
+      padding: 18px;
+      margin-bottom: 16px;
+      max-width: 900px;
+    }
+
+    .tournament-card {
+      background: rgba(26,26,26,0.95);
+      border: 1px solid #333;
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: 0.15s ease;
+    }
+
+    .tournament-card:hover {
+      border-color: #8dff9f;
+      transform: translateY(-2px);
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid #333;
+      background: #111;
+      color: white;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+
+    button, .btn {
+      background: #8dff9f;
+      color: #111;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-top: 10px;
+    }
+
+    .secondary {
+      background: #1a1a1a;
+      color: white;
+      border: 1px solid #333;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #203c2d;
+      color: #8dff9f;
+      font-size: 12px;
+      font-weight: 800;
+      margin-top: 8px;
+    }
+
+    .error { color: #ff6b6b; font-weight: bold; }
+    .ok { color: #8dff9f; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<a class="btn secondary" href="club-dashboard.html">← Volver al panel</a>
+
+<div class="brand">Torneos</div>
+<div class="subtitle" id="clubLabel"></div>
+
+<div class="card">
+  <h2>Nuevo torneo</h2>
+
+  <input id="tournamentName" placeholder="Nombre del torneo. Ej: Torneo Femenino 5ta">
+
+  <select id="tournamentCategory">
+    <option value="">Selecciona categoría</option>
+    <option value="6ta">6ta</option>
+    <option value="5ta">5ta</option>
+    <option value="4ta">4ta</option>
+    <option value="3era">3era</option>
+    <option value="2da">2da</option>
+    <option value="1era">1era</option>
+  </select>
+
+  <select id="tournamentGender">
+    <option value="">Selecciona género</option>
+    <option value="femenino">Femenino</option>
+    <option value="masculino">Masculino</option>
+  </select>
+
+  <button onclick="createTournament()">Crear torneo</button>
+  <div id="createMessage" class="meta" style="margin-top:12px;"></div>
+</div>
+
+<div class="card">
+  <h2>Torneos activos</h2>
+  <div id="activeTournaments">Cargando...</div>
+</div>
+
+<div class="card">
+  <h2>Torneos finalizados</h2>
+  <div id="finishedTournaments">Cargando...</div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+const clubId = localStorage.getItem("club_id");
+const clubName = localStorage.getItem("club_name");
+
+if (!clubId) {
+  window.location.href = "club-login.html";
+}
+
+document.getElementById("clubLabel").innerText = `Club: ${clubName || clubId}`;
+
+function statusLabel(status) {
+  const labels = {
+    draft: "Borrador",
+    registration: "Inscripción",
+    groups_ready: "Grupos listos",
+    group_stage: "Fase de grupos",
+    playoff: "Playoff",
+    completed: "Finalizado"
+  };
+  return labels[status] || status || "Sin estado";
+}
+
+function tournamentCard(t) {
+  return `
+    <div class="tournament-card" onclick="window.location.href='tournament-view.html?id=${t.id}'">
+      <h3>${t.name}</h3>
+      <div class="meta">
+        Categoría: ${t.category || "-"}<br>
+        Género: ${t.gender || "-"}<br>
+        Parejas: ${t.pairs_count || 0} · Grupos: ${t.groups_count || 0} · Partidos: ${t.matches_count || 0}
+      </div>
+      <span class="status">${statusLabel(t.status)}</span>
+    </div>
+  `;
+}
+
+async function loadTournaments() {
+  const active = document.getElementById("activeTournaments");
+  const finished = document.getElementById("finishedTournaments");
+
+  try {
+    const response = await fetch(`${API_URL}/club/${clubId}/tournament_events`);
+    if (!response.ok) throw new Error(`Error API: ${response.status}`);
+
+    const tournaments = await response.json();
+    const activeList = tournaments.filter(t => t.status !== "completed");
+    const finishedList = tournaments.filter(t => t.status === "completed");
+
+    active.innerHTML = activeList.length
+      ? activeList.map(tournamentCard).join("")
+      : `<div class="meta">No hay torneos activos.</div>`;
+
+    finished.innerHTML = finishedList.length
+      ? finishedList.map(tournamentCard).join("")
+      : `<div class="meta">No hay torneos finalizados.</div>`;
+
+  } catch (error) {
+    active.innerHTML = `<div class="error">No se pudieron cargar los torneos: ${error.message}</div>`;
+    finished.innerHTML = "";
+  }
+}
+
+async function createTournament() {
+  const message = document.getElementById("createMessage");
+  message.className = "meta";
+  message.innerText = "Creando torneo...";
+
+  const payload = {
+    club_id: Number(clubId),
+    name: document.getElementById("tournamentName").value.trim(),
+    category: document.getElementById("tournamentCategory").value,
+    gender: document.getElementById("tournamentGender").value
+  };
+
+  if (!payload.name || !payload.category || !payload.gender) {
+    message.className = "error";
+    message.innerText = "Completa nombre, categoría y género.";
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/tournament_events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || "Error creando torneo");
+
+    message.className = "ok";
+    message.innerText = "Torneo creado correctamente.";
+
+    document.getElementById("tournamentName").value = "";
+    document.getElementById("tournamentCategory").value = "";
+    document.getElementById("tournamentGender").value = "";
+
+    window.location.href = `tournament-view.html?id=${data.id}`;
+  } catch (error) {
+    message.className = "error";
+    message.innerText = error.message;
+  }
+}
+
+loadTournaments();
+</script>
+
+</body>
+</html>
