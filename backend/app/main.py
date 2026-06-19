@@ -408,6 +408,40 @@ class LeagueMatchResult(BaseModel):
     score: str
     winner_pair_id: int
 
+
+class TournamentCreate(BaseModel):
+    club_id: int
+    name: str
+    category: str
+    gender: str
+
+class TournamentPairCreate(BaseModel):
+    player_1_id: int
+    player_2_id: int
+    pair_name: str | None = None
+    payment_status: str = "pending"
+    payment_method: str | None = None
+    payment_link: str | None = None
+    payment_reference: str | None = None
+    payment_amount: int | None = None
+
+class TournamentPaymentUpdate(BaseModel):
+    payment_status: str
+    payment_method: str | None = None
+    payment_link: str | None = None
+    payment_reference: str | None = None
+    payment_amount: int | None = None
+
+class TournamentGenerateGroups(BaseModel):
+    groups_count: int
+
+class TournamentMatchResult(BaseModel):
+    score: str
+    winner_pair_id: int
+
+class TournamentGeneratePlayoff(BaseModel):
+    qualifiers_per_group: int = 2
+
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
         ensure_player_rating(cur, player_data.player_id)
@@ -2697,4 +2731,1200 @@ def generate_league_finals(league_id: int):
             return {
                 "message": "Finales generadas",
                 "finals_created": finals_created,
+            }
+
+
+# =========================
+# Torneos - fase de grupos
+# =========================
+
+
+def parse_padel_score(score: str):
+    """Convierte '6-4 4-6 10-8' en sets/games por pareja."""
+    sets_a = sets_b = games_a = games_b = 0
+
+    for raw_set in score.strip().split():
+        if "-" not in raw_set:
+            continue
+
+        left, right = raw_set.split("-", 1)
+
+        try:
+            a = int(left)
+            b = int(right)
+        except ValueError:
+            continue
+
+        games_a += a
+        games_b += b
+
+        if a > b:
+            sets_a += 1
+        elif b > a:
+            sets_b += 1
+
+    return sets_a, sets_b, games_a, games_b
+
+
+def get_tournament_match_multiplier(phase: str | None, bracket_round: str | None) -> float:
+    if phase == "playoff" and bracket_round == "final":
+        return 2.0
+    if phase == "playoff":
+        return 1.8
+    return 1.5
+
+
+@app.post("/tournament_events")
+def create_tournament(data: TournamentCreate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO tournament_events
+                    (club_id, name, category, gender, format, status)
+                VALUES
+                    (%s, %s, %s, %s, 'group_stage', 'registration')
+                RETURNING *;
+                """,
+                (data.club_id, data.name, data.category, data.gender),
+            )
+
+            tournament = cur.fetchone()
+            conn.commit()
+            return tournament
+
+
+@app.get("/club/{club_id}/tournament_events")
+def get_club_tournaments(club_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    te.*,
+                    COUNT(DISTINCT tp.id) AS pairs_count,
+                    COUNT(DISTINCT tg.id) AS groups_count,
+                    COUNT(DISTINCT tm.id) AS matches_count
+                FROM tournament_events te
+                LEFT JOIN tournament_pairs tp
+                    ON tp.tournament_id = te.id
+                LEFT JOIN tournament_groups tg
+                    ON tg.tournament_id = te.id
+                LEFT JOIN tournament_matches tm
+                    ON tm.tournament_id = te.id
+                WHERE te.club_id = %s
+                GROUP BY te.id
+                ORDER BY te.created_at DESC;
+                """,
+                (club_id,),
+            )
+
+            return cur.fetchall()
+
+
+@app.get("/tournament_events/{tournament_id}")
+def get_tournament(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM tournament_events
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            tournament = cur.fetchone()
+
+            if not tournament:
+                raise HTTPException(status_code=404, detail="Torneo no encontrado")
+
+            return tournament
+
+
+@app.post("/tournament_events/{tournament_id}/pairs")
+def create_tournament_pair(tournament_id: int, data: TournamentPairCreate):
+    if data.player_1_id == data.player_2_id:
+        raise HTTPException(
+            status_code=400,
+            detail="La pareja debe tener dos jugadores distintos",
+        )
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM tournament_events
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Torneo no encontrado")
+
+            cur.execute(
+                """
+                INSERT INTO tournament_pairs
+                    (
+                        tournament_id,
+                        player_1_id,
+                        player_2_id,
+                        pair_name,
+                        payment_status,
+                        payment_method,
+                        payment_link,
+                        payment_reference,
+                        payment_amount
+                    )
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *;
+                """,
+                (
+                    tournament_id,
+                    data.player_1_id,
+                    data.player_2_id,
+                    data.pair_name,
+                    data.payment_status,
+                    data.payment_method,
+                    data.payment_link,
+                    data.payment_reference,
+                    data.payment_amount,
+                ),
+            )
+
+            pair = cur.fetchone()
+            conn.commit()
+            return pair
+
+
+@app.get("/tournament_events/{tournament_id}/pairs")
+def get_tournament_pairs(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    tp.*,
+                    tg.name AS group_name,
+                    p1.name AS player_1_name,
+                    p2.name AS player_2_name,
+                    COALESCE(tp.pair_name, p1.name || ' / ' || p2.name) AS display_name
+                FROM tournament_pairs tp
+                JOIN players p1
+                    ON p1.id = tp.player_1_id
+                JOIN players p2
+                    ON p2.id = tp.player_2_id
+                LEFT JOIN tournament_group_members tgm
+                    ON tgm.pair_id = tp.id
+                LEFT JOIN tournament_groups tg
+                    ON tg.id = tgm.group_id
+                WHERE tp.tournament_id = %s
+                ORDER BY tg.name NULLS LAST, tp.id;
+                """,
+                (tournament_id,),
+            )
+
+            return cur.fetchall()
+
+
+@app.patch("/tournament-pairs/{pair_id}/payment")
+def update_tournament_pair_payment(pair_id: int, data: TournamentPaymentUpdate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE tournament_pairs
+                SET payment_status = %s,
+                    payment_method = %s,
+                    payment_link = %s,
+                    payment_reference = %s,
+                    payment_amount = %s
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (
+                    data.payment_status,
+                    data.payment_method,
+                    data.payment_link,
+                    data.payment_reference,
+                    data.payment_amount,
+                    pair_id,
+                ),
+            )
+
+            pair = cur.fetchone()
+
+            if not pair:
+                raise HTTPException(status_code=404, detail="Pareja no encontrada")
+
+            conn.commit()
+            return pair
+
+
+@app.post("/tournament_events/{tournament_id}/generate-groups")
+def generate_tournament_groups(tournament_id: int, data: TournamentGenerateGroups):
+    if data.groups_count < 1:
+        raise HTTPException(status_code=400, detail="Debes indicar al menos 1 grupo")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM tournament_events
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Torneo no encontrado")
+
+            cur.execute(
+                """
+                SELECT id
+                FROM tournament_pairs
+                WHERE tournament_id = %s
+                ORDER BY seed NULLS LAST, id;
+                """,
+                (tournament_id,),
+            )
+
+            pairs = [r["id"] for r in cur.fetchall()]
+
+            if len(pairs) < data.groups_count * 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cada grupo debe tener al menos 2 parejas",
+                )
+
+            # Limpiar estructura anterior del torneo.
+            cur.execute(
+                """
+                DELETE FROM tournament_matches
+                WHERE tournament_id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            cur.execute(
+                """
+                DELETE FROM tournament_groups
+                WHERE tournament_id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            groups = []
+
+            for i in range(data.groups_count):
+                name = chr(ord("A") + i)
+                cur.execute(
+                    """
+                    INSERT INTO tournament_groups (tournament_id, name)
+                    VALUES (%s, %s)
+                    RETURNING *;
+                    """,
+                    (tournament_id, name),
+                )
+
+                groups.append(cur.fetchone())
+
+            for idx, pair_id in enumerate(pairs):
+                group_id = groups[idx % data.groups_count]["id"]
+                cur.execute(
+                    """
+                    INSERT INTO tournament_group_members (group_id, pair_id)
+                    VALUES (%s, %s)
+                    ON CONFLICT (group_id, pair_id) DO NOTHING;
+                    """,
+                    (group_id, pair_id),
+                )
+
+            cur.execute(
+                """
+                UPDATE tournament_events
+                SET status = 'groups_ready'
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Grupos generados",
+                "groups_created": len(groups),
+                "pairs_assigned": len(pairs),
+            }
+
+
+@app.post("/tournament_events/{tournament_id}/generate-group-matches")
+def generate_tournament_group_matches(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name
+                FROM tournament_groups
+                WHERE tournament_id = %s
+                ORDER BY name;
+                """,
+                (tournament_id,),
+            )
+
+            groups = cur.fetchall()
+
+            if not groups:
+                raise HTTPException(status_code=400, detail="Primero debes generar grupos")
+
+            cur.execute(
+                """
+                DELETE FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'group_stage';
+                """,
+                (tournament_id,),
+            )
+
+            created = 0
+
+            for group in groups:
+                cur.execute(
+                    """
+                    SELECT tp.id
+                    FROM tournament_group_members tgm
+                    JOIN tournament_pairs tp
+                        ON tp.id = tgm.pair_id
+                    WHERE tgm.group_id = %s
+                      AND tp.tournament_id = %s
+                    ORDER BY tp.id;
+                    """,
+                    (group["id"], tournament_id),
+                )
+
+                pairs = [r["id"] for r in cur.fetchall()]
+
+                if len(pairs) < 2:
+                    continue
+
+                round_number = 1
+
+                for i in range(len(pairs)):
+                    for j in range(i + 1, len(pairs)):
+                        cur.execute(
+                            """
+                            INSERT INTO tournament_matches
+                                (
+                                    tournament_id,
+                                    group_id,
+                                    phase,
+                                    round_number,
+                                    pair_a_id,
+                                    pair_b_id,
+                                    status
+                                )
+                            VALUES
+                                (%s, %s, 'group_stage', %s, %s, %s, 'scheduled');
+                            """,
+                            (
+                                tournament_id,
+                                group["id"],
+                                round_number,
+                                pairs[i],
+                                pairs[j],
+                            ),
+                        )
+
+                        created += 1
+                        round_number += 1
+
+            cur.execute(
+                """
+                UPDATE tournament_events
+                SET status = 'group_stage'
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Partidos de grupos generados",
+                "matches_created": created,
+            }
+
+
+@app.get("/tournament_events/{tournament_id}/matches")
+def get_tournament_matches(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    tm.*,
+                    tg.name AS group_name,
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name
+                FROM tournament_matches tm
+                LEFT JOIN tournament_groups tg
+                    ON tg.id = tm.group_id
+                JOIN tournament_pairs pa
+                    ON pa.id = tm.pair_a_id
+                JOIN players p1a
+                    ON p1a.id = pa.player_1_id
+                JOIN players p2a
+                    ON p2a.id = pa.player_2_id
+                JOIN tournament_pairs pb
+                    ON pb.id = tm.pair_b_id
+                JOIN players p1b
+                    ON p1b.id = pb.player_1_id
+                JOIN players p2b
+                    ON p2b.id = pb.player_2_id
+                WHERE tm.tournament_id = %s
+                ORDER BY
+                    CASE
+                        WHEN tm.phase = 'group_stage' THEN 1
+                        WHEN tm.bracket_round = 'semifinal' THEN 2
+                        WHEN tm.bracket_round = 'final' THEN 3
+                        ELSE 4
+                    END,
+                    tg.name NULLS LAST,
+                    tm.round_number,
+                    tm.id;
+                """,
+                (tournament_id,),
+            )
+
+            return cur.fetchall()
+
+
+@app.post("/tournament-matches/{match_id}/result")
+def save_tournament_match_result(match_id: int, data: TournamentMatchResult):
+    sets_a, sets_b, games_a, games_b = parse_padel_score(data.score)
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pair_a_id, pair_b_id
+                FROM tournament_matches
+                WHERE id = %s;
+                """,
+                (match_id,),
+            )
+
+            match = cur.fetchone()
+
+            if not match:
+                raise HTTPException(status_code=404, detail="Partido de torneo no encontrado")
+
+            if data.winner_pair_id not in [match["pair_a_id"], match["pair_b_id"]]:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La pareja ganadora no pertenece a este partido",
+                )
+
+            cur.execute(
+                """
+                UPDATE tournament_matches
+                SET score = %s,
+                    winner_pair_id = %s,
+                    sets_a = %s,
+                    sets_b = %s,
+                    games_a = %s,
+                    games_b = %s,
+                    status = 'completed',
+                    played_at = NOW()
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (
+                    data.score,
+                    data.winner_pair_id,
+                    sets_a,
+                    sets_b,
+                    games_a,
+                    games_b,
+                    match_id,
+                ),
+            )
+
+            result = cur.fetchone()
+            conn.commit()
+            return result
+
+
+@app.get("/tournament_events/{tournament_id}/standings")
+def get_tournament_standings(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    tg.id AS group_id,
+                    tg.name AS group_name,
+                    tp.id AS pair_id,
+                    COALESCE(tp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+
+                    COUNT(tm.id) FILTER (
+                        WHERE tm.status = 'completed'
+                    ) AS played,
+
+                    COUNT(tm.id) FILTER (
+                        WHERE tm.winner_pair_id = tp.id
+                    ) AS wins,
+
+                    COUNT(tm.id) FILTER (
+                        WHERE tm.status = 'completed'
+                          AND tm.winner_pair_id IS NOT NULL
+                          AND tm.winner_pair_id <> tp.id
+                    ) AS losses,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN tm.winner_pair_id = tp.id THEN 3
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS points,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN tm.pair_a_id = tp.id THEN tm.sets_a
+                                WHEN tm.pair_b_id = tp.id THEN tm.sets_b
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_for,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN tm.pair_a_id = tp.id THEN tm.sets_b
+                                WHEN tm.pair_b_id = tp.id THEN tm.sets_a
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_against,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN tm.pair_a_id = tp.id THEN tm.games_a
+                                WHEN tm.pair_b_id = tp.id THEN tm.games_b
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS games_for,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN tm.pair_a_id = tp.id THEN tm.games_b
+                                WHEN tm.pair_b_id = tp.id THEN tm.games_a
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS games_against
+
+                FROM tournament_group_members tgm
+                JOIN tournament_groups tg
+                    ON tg.id = tgm.group_id
+                JOIN tournament_pairs tp
+                    ON tp.id = tgm.pair_id
+                JOIN players p1
+                    ON p1.id = tp.player_1_id
+                JOIN players p2
+                    ON p2.id = tp.player_2_id
+                LEFT JOIN tournament_matches tm
+                    ON (
+                        tm.pair_a_id = tp.id
+                        OR tm.pair_b_id = tp.id
+                    )
+                   AND tm.phase = 'group_stage'
+                   AND tm.group_id = tg.id
+                WHERE tg.tournament_id = %s
+                GROUP BY
+                    tg.id,
+                    tg.name,
+                    tp.id,
+                    tp.pair_name,
+                    p1.name,
+                    p2.name
+                ORDER BY
+                    tg.name,
+                    points DESC,
+                    wins DESC,
+                    (COALESCE(SUM(CASE WHEN tm.pair_a_id = tp.id THEN tm.sets_a WHEN tm.pair_b_id = tp.id THEN tm.sets_b ELSE 0 END), 0) -
+                     COALESCE(SUM(CASE WHEN tm.pair_a_id = tp.id THEN tm.sets_b WHEN tm.pair_b_id = tp.id THEN tm.sets_a ELSE 0 END), 0)) DESC,
+                    (COALESCE(SUM(CASE WHEN tm.pair_a_id = tp.id THEN tm.games_a WHEN tm.pair_b_id = tp.id THEN tm.games_b ELSE 0 END), 0) -
+                     COALESCE(SUM(CASE WHEN tm.pair_a_id = tp.id THEN tm.games_b WHEN tm.pair_b_id = tp.id THEN tm.games_a ELSE 0 END), 0)) DESC,
+                    pair_name;
+                """,
+                (tournament_id,),
+            )
+
+            rows = cur.fetchall()
+
+            for r in rows:
+                r["sets_diff"] = int(r["sets_for"] or 0) - int(r["sets_against"] or 0)
+                r["games_diff"] = int(r["games_for"] or 0) - int(r["games_against"] or 0)
+
+            return rows
+
+
+@app.post("/tournament_events/{tournament_id}/generate-playoff")
+def generate_tournament_playoff(tournament_id: int, data: TournamentGeneratePlayoff):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pending
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'group_stage'
+                  AND status <> 'completed';
+                """,
+                (tournament_id,),
+            )
+
+            pending = cur.fetchone()["pending"]
+
+            if pending > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Faltan {pending} partidos de grupos",
+                )
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS existing
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'playoff';
+                """,
+                (tournament_id,),
+            )
+
+            if cur.fetchone()["existing"] > 0:
+                raise HTTPException(status_code=400, detail="El playoff ya fue generado")
+
+            cur.execute(
+                """
+                WITH base AS (
+                    SELECT
+                        tg.name AS group_name,
+                        tp.id AS pair_id,
+
+                        COUNT(tm.id) FILTER (
+                            WHERE tm.status = 'completed'
+                        ) AS played,
+
+                        COUNT(tm.id) FILTER (
+                            WHERE tm.winner_pair_id = tp.id
+                        ) AS wins,
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN tm.winner_pair_id = tp.id THEN 3
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS points,
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN tm.pair_a_id = tp.id THEN tm.sets_a
+                                    WHEN tm.pair_b_id = tp.id THEN tm.sets_b
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS sets_for,
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN tm.pair_a_id = tp.id THEN tm.sets_b
+                                    WHEN tm.pair_b_id = tp.id THEN tm.sets_a
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS sets_against,
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN tm.pair_a_id = tp.id THEN tm.games_a
+                                    WHEN tm.pair_b_id = tp.id THEN tm.games_b
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS games_for,
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN tm.pair_a_id = tp.id THEN tm.games_b
+                                    WHEN tm.pair_b_id = tp.id THEN tm.games_a
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        ) AS games_against
+
+                    FROM tournament_group_members tgm
+                    JOIN tournament_groups tg
+                        ON tg.id = tgm.group_id
+                    JOIN tournament_pairs tp
+                        ON tp.id = tgm.pair_id
+                    LEFT JOIN tournament_matches tm
+                        ON (
+                            tm.pair_a_id = tp.id
+                            OR tm.pair_b_id = tp.id
+                        )
+                       AND tm.phase = 'group_stage'
+                       AND tm.group_id = tg.id
+                    WHERE tg.tournament_id = %s
+                    GROUP BY tg.name, tp.id
+                ), ranked AS (
+                    SELECT
+                        *,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY group_name
+                            ORDER BY
+                                points DESC,
+                                wins DESC,
+                                (sets_for - sets_against) DESC,
+                                (games_for - games_against) DESC,
+                                pair_id ASC
+                        ) AS group_position
+                    FROM base
+                )
+                SELECT *
+                FROM ranked
+                WHERE group_position <= %s
+                ORDER BY
+                    points DESC,
+                    wins DESC,
+                    (sets_for - sets_against) DESC,
+                    (games_for - games_against) DESC,
+                    pair_id ASC;
+                """,
+                (tournament_id, data.qualifiers_per_group),
+            )
+
+            qualifiers = cur.fetchall()
+
+            if len(qualifiers) != 4:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Por ahora el playoff soporta exactamente 4 clasificados "
+                        "para semifinal y final. Ajusta la cantidad de grupos o "
+                        "clasificados por grupo para obtener 4 parejas."
+                    ),
+                )
+
+            # Cruces: mejor clasificado vs cuarto, segundo vs tercero.
+            playoff_matches = [
+                (qualifiers[0]["pair_id"], qualifiers[3]["pair_id"]),
+                (qualifiers[1]["pair_id"], qualifiers[2]["pair_id"]),
+            ]
+
+            created = 0
+
+            for pair_a, pair_b in playoff_matches:
+                cur.execute(
+                    """
+                    INSERT INTO tournament_matches
+                        (
+                            tournament_id,
+                            phase,
+                            bracket_round,
+                            round_number,
+                            pair_a_id,
+                            pair_b_id,
+                            status
+                        )
+                    VALUES
+                        (%s, 'playoff', 'semifinal', 1, %s, %s, 'scheduled');
+                    """,
+                    (tournament_id, pair_a, pair_b),
+                )
+
+                created += 1
+
+            cur.execute(
+                """
+                UPDATE tournament_events
+                SET status = 'playoff'
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Playoff generado",
+                "matches_created": created,
+            }
+
+
+@app.post("/tournament_events/{tournament_id}/generate-final")
+def generate_tournament_final(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pending
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'playoff'
+                  AND bracket_round = 'semifinal'
+                  AND status <> 'completed';
+                """,
+                (tournament_id,),
+            )
+
+            pending = cur.fetchone()["pending"]
+
+            if pending > 0:
+                raise HTTPException(status_code=400, detail=f"Faltan {pending} semifinales")
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS existing
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'playoff'
+                  AND bracket_round = 'final';
+                """,
+                (tournament_id,),
+            )
+
+            if cur.fetchone()["existing"] > 0:
+                raise HTTPException(status_code=400, detail="La final ya fue generada")
+
+            cur.execute(
+                """
+                SELECT winner_pair_id
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND phase = 'playoff'
+                  AND bracket_round = 'semifinal'
+                ORDER BY id;
+                """,
+                (tournament_id,),
+            )
+
+            winners = [r["winner_pair_id"] for r in cur.fetchall() if r["winner_pair_id"]]
+
+            if len(winners) != 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No hay exactamente 2 ganadores de semifinal para crear la final",
+                )
+
+            cur.execute(
+                """
+                INSERT INTO tournament_matches
+                    (
+                        tournament_id,
+                        phase,
+                        bracket_round,
+                        round_number,
+                        pair_a_id,
+                        pair_b_id,
+                        status
+                    )
+                VALUES
+                    (%s, 'playoff', 'final', 2, %s, %s, 'scheduled')
+                RETURNING *;
+                """,
+                (tournament_id, winners[0], winners[1]),
+            )
+
+            final = cur.fetchone()
+            conn.commit()
+
+            return {
+                "message": "Final generada",
+                "final": final,
+            }
+
+
+@app.post("/tournament_events/{tournament_id}/finish")
+def finish_tournament(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT *
+                FROM tournament_events
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            tournament = cur.fetchone()
+
+            if not tournament:
+                raise HTTPException(status_code=404, detail="Torneo no encontrado")
+
+            if tournament["status"] == "completed":
+                raise HTTPException(status_code=400, detail="Este torneo ya fue finalizado")
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pending
+                FROM tournament_matches
+                WHERE tournament_id = %s
+                  AND status <> 'completed';
+                """,
+                (tournament_id,),
+            )
+
+            pending = cur.fetchone()["pending"]
+
+            if pending > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Faltan {pending} partidos por completar",
+                )
+
+            cur.execute(
+                """
+                SELECT
+                    tm.id,
+                    tm.phase,
+                    tm.bracket_round,
+                    tm.winner_pair_id,
+                    tm.rating_processed,
+                    pa.id AS pair_a_id,
+                    pa.player_1_id AS a1,
+                    pa.player_2_id AS a2,
+                    pb.id AS pair_b_id,
+                    pb.player_1_id AS b1,
+                    pb.player_2_id AS b2
+                FROM tournament_matches tm
+                JOIN tournament_pairs pa
+                    ON pa.id = tm.pair_a_id
+                JOIN tournament_pairs pb
+                    ON pb.id = tm.pair_b_id
+                WHERE tm.tournament_id = %s
+                  AND tm.status = 'completed'
+                  AND tm.winner_pair_id IS NOT NULL;
+                """,
+                (tournament_id,),
+            )
+
+            matches = cur.fetchall()
+
+            for match in matches:
+                if match["rating_processed"]:
+                    continue
+
+                winner = "A" if match["winner_pair_id"] == match["pair_a_id"] else "B"
+                multiplier = get_tournament_match_multiplier(
+                    match["phase"],
+                    match["bracket_round"],
+                )
+
+                update_rating_pair_vs_pair(
+                    cur=cur,
+                    player_ids_team_a=[match["a1"], match["a2"]],
+                    player_ids_team_b=[match["b1"], match["b2"]],
+                    winner=winner,
+                    match_id=None,
+                    source_type="tournament_match",
+                    source_id=match["id"],
+                    multiplier=multiplier,
+                )
+
+                cur.execute(
+                    """
+                    UPDATE tournament_matches
+                    SET rating_processed = TRUE
+                    WHERE id = %s;
+                    """,
+                    (match["id"],),
+                )
+
+            # Bonus final del torneo.
+            cur.execute(
+                """
+                SELECT
+                    tm.winner_pair_id,
+                    tm.pair_a_id,
+                    tm.pair_b_id,
+                    wp.player_1_id AS champion_1,
+                    wp.player_2_id AS champion_2,
+                    CASE
+                        WHEN tm.winner_pair_id = tm.pair_a_id THEN tm.pair_b_id
+                        ELSE tm.pair_a_id
+                    END AS finalist_pair_id
+                FROM tournament_matches tm
+                JOIN tournament_pairs wp
+                    ON wp.id = tm.winner_pair_id
+                WHERE tm.tournament_id = %s
+                  AND tm.phase = 'playoff'
+                  AND tm.bracket_round = 'final'
+                  AND tm.status = 'completed'
+                ORDER BY tm.id DESC
+                LIMIT 1;
+                """,
+                (tournament_id,),
+            )
+
+            final = cur.fetchone()
+
+            if final:
+                apply_rating_bonus(cur, final["champion_1"], 15, "tournament_champion", tournament_id)
+                apply_rating_bonus(cur, final["champion_2"], 15, "tournament_champion", tournament_id)
+
+                cur.execute(
+                    """
+                    SELECT player_1_id, player_2_id
+                    FROM tournament_pairs
+                    WHERE id = %s;
+                    """,
+                    (final["finalist_pair_id"],),
+                )
+
+                finalist = cur.fetchone()
+
+                if finalist:
+                    apply_rating_bonus(cur, finalist["player_1_id"], 8, "tournament_finalist", tournament_id)
+                    apply_rating_bonus(cur, finalist["player_2_id"], 8, "tournament_finalist", tournament_id)
+
+            cur.execute(
+                """
+                UPDATE tournament_events
+                SET status = 'completed',
+                    finished_at = NOW()
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (tournament_id,),
+            )
+
+            finished = cur.fetchone()
+            conn.commit()
+
+            return {
+                "message": "Torneo finalizado correctamente",
+                "tournament": finished,
+            }
+
+
+@app.get("/tournament_events/{tournament_id}/summary")
+def get_tournament_summary(tournament_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    tm.bracket_round,
+                    tm.winner_pair_id,
+                    COALESCE(wp.pair_name, w1.name || ' / ' || w2.name) AS winner_pair_name,
+                    COALESCE(pa.pair_name, a1.name || ' / ' || a2.name) AS pair_a_name,
+                    COALESCE(pb.pair_name, b1.name || ' / ' || b2.name) AS pair_b_name,
+                    tm.score
+                FROM tournament_matches tm
+                JOIN tournament_pairs pa
+                    ON pa.id = tm.pair_a_id
+                JOIN players a1
+                    ON a1.id = pa.player_1_id
+                JOIN players a2
+                    ON a2.id = pa.player_2_id
+                JOIN tournament_pairs pb
+                    ON pb.id = tm.pair_b_id
+                JOIN players b1
+                    ON b1.id = pb.player_1_id
+                JOIN players b2
+                    ON b2.id = pb.player_2_id
+                LEFT JOIN tournament_pairs wp
+                    ON wp.id = tm.winner_pair_id
+                LEFT JOIN players w1
+                    ON w1.id = wp.player_1_id
+                LEFT JOIN players w2
+                    ON w2.id = wp.player_2_id
+                WHERE tm.tournament_id = %s
+                  AND tm.phase = 'playoff'
+                ORDER BY
+                    CASE
+                        WHEN tm.bracket_round = 'final' THEN 1
+                        WHEN tm.bracket_round = 'semifinal' THEN 2
+                        ELSE 3
+                    END,
+                    tm.id;
+                """,
+                (tournament_id,),
+            )
+
+            playoff = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    tp.id,
+                    COALESCE(tp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+                    tg.name AS group_name,
+                    tp.payment_status,
+                    tp.payment_method,
+                    tp.payment_amount,
+                    tp.payment_reference,
+                    tp.payment_link
+                FROM tournament_pairs tp
+                JOIN players p1
+                    ON p1.id = tp.player_1_id
+                JOIN players p2
+                    ON p2.id = tp.player_2_id
+                LEFT JOIN tournament_group_members tgm
+                    ON tgm.pair_id = tp.id
+                LEFT JOIN tournament_groups tg
+                    ON tg.id = tgm.group_id
+                WHERE tp.tournament_id = %s
+                ORDER BY tg.name NULLS LAST, pair_name;
+                """,
+                (tournament_id,),
+            )
+
+            pairs = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT *
+                FROM tournament_events
+                WHERE id = %s;
+                """,
+                (tournament_id,),
+            )
+
+            tournament = cur.fetchone()
+
+            return {
+                "tournament": tournament,
+                "playoff": playoff,
+                "pairs": pairs,
             }
