@@ -558,17 +558,19 @@ function renderMatchCard(m) {
         id="score_${m.id}"
         placeholder="Ej: 6-4 7-5"
         value="${m.score || ""}"
-        ${window.leagueStatus === "completed" ? "disabled" : ""}
-      >
+        ${isCompleted || window.leagueStatus === "completed" ? "disabled" : ""}
+      />
 
+      ${!isCompleted ? `
       <div class="winner-actions">
         <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">
-          Ganó A
+          Ganó ${m.pair_a_name}
         </button>
         <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">
-          Ganó B
+          Ganó ${m.pair_b_name}
         </button>
       </div>
+      ` : ""}
     </div>
   `;
 }
@@ -801,17 +803,43 @@ function renderPlayoffs() {
 function renderBracketMatch(m) {
   const title = `${m.cup === "oro" ? "Copa Oro" : "Copa Plata"} · ${m.bracket_round === "final" ? "Final" : "Semifinal"}`;
   const winner = getWinnerName(m);
+  const isCompleted = m.status === "completed";
+
   return `
     <div class="bracket-match">
       <div class="meta">${title}</div>
-      <div class="bracket-team ${winner === m.pair_a_name ? "winner" : ""}">${m.pair_a_name}</div>
-      <div class="bracket-team ${winner === m.pair_b_name ? "winner" : ""}">${m.pair_b_name}</div>
-      <input id="score_${m.id}" placeholder="Ej: 6-4 7-5" value="${m.score || ""}">
-      <div class="winner-actions" style="justify-content:flex-start; margin-top:10px;">
-        <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">Ganó A</button>
-        <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">Ganó B</button>
+
+      <div class="bracket-team ${winner === m.pair_a_name ? "winner" : ""}">
+        ${m.pair_a_name}
       </div>
-      <div class="match-status">${m.score ? `Resultado: ${m.score}` : "Sin resultado"}${winner ? ` · Ganó: ${winner}` : ""}</div>
+
+      <div class="bracket-team ${winner === m.pair_b_name ? "winner" : ""}">
+        ${m.pair_b_name}
+      </div>
+
+      <input
+        id="score_${m.id}"
+        placeholder="Ej: 6-4 7-5"
+        value="${m.score || ""}"
+        ${isCompleted || window.leagueStatus === "completed" ? "disabled" : ""}
+      >
+
+      ${!isCompleted ? `
+      <div class="winner-actions" style="justify-content:flex-start; margin-top:10px;">
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">
+          🏆 ${m.pair_a_name}
+        </button>
+
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">
+          🏆 ${m.pair_b_name}
+        </button>
+      </div>
+      ` : ""}
+
+      <div class="match-status">
+        ${m.score ? `Resultado: ${m.score}` : "Sin resultado"}
+        ${winner ? ` · Ganó: ${winner}` : ""}
+      </div>
     </div>
   `;
 }
