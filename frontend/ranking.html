@@ -4,65 +4,86 @@
   <meta charset="UTF-8">
   <title>PuntoRank - Ranking</title>
   <link rel="stylesheet" href="theme.css">
+  <style>
+    .ranking-shell { max-width: 1120px; margin: 0 auto; }
+    .ranking-toolbar { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 24px 0; }
+    .weekly-card {
+      background: linear-gradient(135deg, #111827, #1f2937);
+      color: white;
+      border-radius: 24px;
+      padding: 18px;
+      margin: 16px 0 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 20px 50px rgba(17,24,39,0.18);
+    }
+    .weekly-card .label { color: #8dff9f; font-weight: 950; margin-bottom: 8px; }
+    .weekly-card .name { color: white; font-size: 22px; font-weight: 950; }
+    .weekly-card .points { color: #8dff9f; font-weight: 900; margin-top: 4px; }
+    .ranking-card { cursor: pointer; }
+    .ranking-card .rating { color: #3f7f40; }
+    .player-line { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .mini-meta { color:#6b7280; font-size:13px; margin-top:4px; }
+    .rank-badge { display:inline-block; background:#eef8ef; color:#2f7d32; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:900; margin-top:7px; }
+  </style>
 </head>
 <body>
+<div class="ranking-shell">
+  <a class="btn secondary" href="index.html">← Inicio</a>
 
   <div class="header">
     <div class="brand">PuntoRank</div>
     <div class="subtitle">Ranking validado de jugadores de pádel</div>
   </div>
 
+  <div class="ranking-toolbar">
+    <select id="rankingScope" onchange="loadRanking()">
+      <option value="1">Espacio Active</option>
+      <option value="global">Global</option>
+    </select>
 
-<div class="filters">
-  <select id="rankingScope" onchange="loadRanking()">
-    <option value="1">Espacio Active</option>
-    <option value="global">Global</option>
-  </select>
+    <select id="genderFilter" onchange="loadRanking()">
+      <option value="">Todos</option>
+      <option value="femenino">Femenino</option>
+      <option value="masculino">Masculino</option>
+    </select>
 
-  <select id="genderFilter" onchange="loadRanking()">
-    <option value="">Todos</option>
-    <option value="femenino">Femenino</option>
-    <option value="masculino">Masculino</option>
-  </select>
+    <select id="categoryFilter" onchange="loadRanking()">
+      <option value="">Todas las categorías</option>
+      <option value="6ta">6ta</option>
+      <option value="5ta">5ta</option>
+      <option value="4ta">4ta</option>
+      <option value="3era">3era</option>
+      <option value="2da">2da</option>
+      <option value="1era">1era</option>
+    </select>
+  </div>
 
-  <select id="categoryFilter" onchange="loadRanking()">
-    <option value="">Todas las categorías</option>
-    <option value="6ta">6ta</option>
-    <option value="5ta">5ta</option>
-    <option value="4ta">4ta</option>
-    <option value="3era">3era</option>
-    <option value="2da">2da</option>
-    <option value="1era">1era</option>
-  </select>
+  <div id="topWeekly"></div>
+  <div id="rankingContainer">Cargando ranking...</div>
 </div>
 
-
-<div id="topWeekly"></div>
-
-  <div id="rankingContainer">Cargando ranking...</div>
-
 <script>
-  const API_URL = "https://puntorank-backend.onrender.com";
-
+const API_URL = "https://puntorank-backend.onrender.com";
 
 async function loadTopWeekly() {
   try {
     const response = await fetch(`${API_URL}/ranking/top-weekly`);
     const data = await response.json();
+    const container = document.getElementById("topWeekly");
 
-    if (!data) return;
+    if (!data || !data.name) {
+      container.innerHTML = "";
+      return;
+    }
 
-    document.getElementById("topWeekly").innerHTML = `
-      <div style="
-        background:#1a1a1a;
-        border:1px solid #333;
-        border-radius:20px;
-        padding:16px;
-        margin-bottom:16px;
-      ">
-        <div style="color:#8dff9f; font-weight:bold;">🔥 Top semanal</div>
-        <div style="font-size:20px; font-weight:900;">${data.name}</div>
-        <div style="color:#00ff9c;">+${Math.round(data.total_delta)} puntos</div>
+    const points = Number(data.total_delta || 0);
+    const sign = points > 0 ? "+" : "";
+
+    container.innerHTML = `
+      <div class="weekly-card">
+        <div class="label">🔥 Top semanal</div>
+        <div class="name">${data.name}</div>
+        <div class="points">${sign}${points.toFixed(1)} puntos esta semana</div>
       </div>
     `;
   } catch (err) {
@@ -70,102 +91,71 @@ async function loadTopWeekly() {
   }
 }
 
-  async function loadRanking() {
+async function loadRanking() {
+  const scope = document.getElementById("rankingScope").value;
+  const gender = document.getElementById("genderFilter").value;
+  const category = document.getElementById("categoryFilter").value;
 
-const scope = document.getElementById("rankingScope").value;
-const gender = document.getElementById("genderFilter").value;
-const category = document.getElementById("categoryFilter").value;
+  const params = new URLSearchParams();
+  if (scope !== "global") params.append("club_id", scope);
+  if (gender) params.append("gender", gender);
+  if (category) params.append("category", category);
 
-const params = new URLSearchParams();
+  const url = params.toString()
+    ? `${API_URL}/ranking?${params.toString()}`
+    : `${API_URL}/ranking`;
 
-if (scope !== "global") {
-  params.append("club_id", scope);
-}
+  const container = document.getElementById("rankingContainer");
+  container.innerHTML = "Cargando ranking...";
 
-if (gender) {
-  params.append("gender", gender);
-}
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Error API: ${response.status}`);
 
-if (category) {
-  params.append("category", category);
-}
+    const data = await response.json();
+    container.innerHTML = "";
 
-const queryString = params.toString();
-const url = queryString
-  ? `${API_URL}/ranking?${queryString}`
-  : `${API_URL}/ranking`;    
-
-    const container = document.getElementById("rankingContainer");
-    container.innerHTML = "Cargando ranking...";
-
-    try {
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(`Error API: ${response.status}`);
-      }
-
-      const data = await response.json();
-      container.innerHTML = "";
-
-      if (data.length === 0) {
-        container.innerHTML = `<div class="empty">Aún no hay jugadores en el ranking.</div>`;
-        return;
-      }
-
-
-
-for (const [index, player] of data.entries()) {
-  const card = document.createElement("div");
-
-  const streakResponse = await fetch(`${API_URL}/players/${player.player_id}/streak`);
-  const streakData = await streakResponse.json();
-
-  let streakHtml = "";
-  if (streakData.streak >= 3) {
-    streakHtml = `<div class="badge">🔥 ${streakData.streak} streak</div>`;
-  }
-
-  let topClass = "";
-  if (index === 0) topClass = "top1";
-  if (index === 1) topClass = "top2";
-  if (index === 2) topClass = "top3";
-
-  card.className = `ranking-card ${topClass}`;
-  card.style.animationDelay = `${index * 0.05}s`;
-
-  const verifiedBadge = player.is_registered
-    ? `<div class="badge">Perfil verificado</div>`
-    : `<div class="badge">Jugador pendiente</div>`;
-
-  card.innerHTML = `
-    <div class="position">${index + 1}</div>
-
-    <div>
-      <div class="player-name" onclick="goToProfile(${player.player_id})" style="cursor:pointer;">
-        ${player.player_name}
-      </div>
-      <div class="club-name">${player.club_name || "Club no asignado"}</div>
-      ${verifiedBadge}
-      ${streakHtml}
-    </div>
-
-    <div class="rating-box">
-      <div class="rating">${player.rating}</div>
-      <div class="matches">${player.matches_count} partidos</div>
-    </div>
-  `;
-
-  container.appendChild(card);
-}
-
-
-    } catch (error) {
-      console.error(error);
-      container.innerHTML = "Error cargando ranking. Revisa la consola.";
+    if (data.length === 0) {
+      container.innerHTML = `<div class="empty">Aún no hay jugadores en el ranking.</div>`;
+      return;
     }
-  }
 
+    for (const [index, player] of data.entries()) {
+      const card = document.createElement("div");
+      let topClass = "";
+      if (index === 0) topClass = "top1";
+      if (index === 1) topClass = "top2";
+      if (index === 2) topClass = "top3";
+
+      card.className = `ranking-card ${topClass}`;
+      card.onclick = () => goToProfile(player.player_id);
+
+      const verifiedBadge = player.is_registered
+        ? `<div class="rank-badge">Perfil verificado</div>`
+        : `<div class="rank-badge">Jugador pendiente</div>`;
+
+      card.innerHTML = `
+        <div class="position">${index + 1}</div>
+        <div>
+          <div class="player-line">
+            <div class="player-name">${player.player_name}</div>
+          </div>
+          <div class="mini-meta">${player.club_name || "Club no asignado"}</div>
+          ${verifiedBadge}
+        </div>
+        <div class="rating-box">
+          <div class="rating">${Number(player.rating || 1000).toFixed(2)}</div>
+          <div class="matches">${player.matches_count || 0} partidos</div>
+        </div>
+      `;
+
+      container.appendChild(card);
+    }
+  } catch (error) {
+    console.error(error);
+    container.innerHTML = "Error cargando ranking. Revisa la consola.";
+  }
+}
 
 function goToProfile(playerId) {
   window.location.href = `player-profile.html?id=${playerId}`;
@@ -173,8 +163,6 @@ function goToProfile(playerId) {
 
 loadTopWeekly();
 loadRanking();
-
 </script>
-
 </body>
 </html>
