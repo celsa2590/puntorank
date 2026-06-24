@@ -5,173 +5,224 @@
   <title>PuntoRank - Perfil Jugador</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="theme.css">
+  <style>
+    .profile-shell { max-width: 1120px; margin: 0 auto; }
+    .profile-hero {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: center;
+      background: white;
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 24px;
+      padding: 22px;
+      box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08);
+      margin: 18px 0;
+    }
+    .profile-name { font-size: 30px; font-weight: 950; color: #111827; margin-bottom: 8px; }
+    .profile-meta { color: #6b7280; line-height: 1.5; }
+    .profile-rating { text-align: right; }
+    .profile-rating .value { color: #3f7f40; font-size: 44px; font-weight: 950; }
+    .profile-rating .label { color: #6b7280; font-weight: 700; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .stat-card { background: white; border: 1px solid #e5e7eb; border-radius: 20px; padding: 16px; }
+    .stat-card .label { color: #6b7280; font-size: 13px; margin-bottom: 6px; }
+    .stat-card .value { color: #111827; font-size: 24px; font-weight: 950; }
+    .profile-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    .chart-wrap { height: 300px; position: relative; }
+    .history-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; border-bottom: 1px solid #eef0f2; padding: 14px 0; }
+    .history-row:last-child { border-bottom: 0; }
+    .history-title { font-weight: 900; color: #111827; }
+    .history-subtitle { color: #6b7280; font-size: 14px; margin-top: 4px; }
+    .history-score { text-align: right; font-weight: 900; color: #111827; }
+    .delta-positive { color: #2f8f46; font-weight: 950; }
+    .delta-negative { color: #c24141; font-weight: 950; }
+    .hidden { display: none; }
+    .section-header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+    @media (max-width: 760px) {
+      .profile-hero { grid-template-columns: 1fr; }
+      .profile-rating { text-align: left; }
+      .history-row { grid-template-columns: 1fr; }
+      .history-score { text-align: left; }
+    }
+  </style>
 </head>
 <body>
-
+<div class="profile-shell">
+  <a class="btn secondary" href="ranking.html">← Volver al ranking</a>
   <div class="brand">PuntoRank</div>
 
   <div id="profileContainer">Cargando perfil...</div>
 
-<div class="history-card">
-  <h2>Evolución del rating</h2>
-  <canvas id="ratingChart"></canvas>
-</div>
+  <div class="stats-grid" id="statsGrid"></div>
 
-<div class="history-card">
-  <h2>Historial de partidos</h2>
-  <div id="matchesHistory">Cargando historial...</div>
+  <div class="card">
+    <div class="section-header">
+      <h2>Historial de rating</h2>
+      <button class="secondary" id="toggleRatingHistory" onclick="toggleRatingHistory()" style="display:none;">Ver más</button>
+    </div>
+    <div id="ratingHistoryList">Cargando historial...</div>
+  </div>
+
+  <div class="card">
+    <h2>Evolución del rating</h2>
+    <div class="chart-wrap">
+      <canvas id="ratingChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-header">
+      <h2>Historial de partidos</h2>
+      <button class="secondary" id="toggleMatchesHistory" onclick="toggleMatchesHistory()" style="display:none;">Ver más</button>
+    </div>
+    <div id="matchesHistory">Cargando historial...</div>
+  </div>
 </div>
 
 <script>
-  const API_URL = "https://puntorank-backend.onrender.com";
+const API_URL = "https://puntorank-backend.onrender.com";
+const params = new URLSearchParams(window.location.search);
+const PLAYER_ID = parseInt(params.get("id") || "1");
+let fullRatingHistory = [];
+let showAllRating = false;
+let fullMatchesHistory = [];
+let showAllMatches = false;
+let ratingChart = null;
 
-  const params = new URLSearchParams(window.location.search);
-  const PLAYER_ID = params.get("id") || 1;
+async function loadProfile() {
+  try {
+    const response = await fetch(`${API_URL}/players/${PLAYER_ID}/profile`);
+    if (!response.ok) throw new Error(`Error API: ${response.status}`);
 
-  async function loadProfile() {
-    try {
-      const response = await fetch(`${API_URL}/players/${PLAYER_ID}/profile`);
+    const data = await response.json();
+    const player = data.player;
+    const history = data.history || [];
+    fullRatingHistory = history;
 
-      if (!response.ok) {
-        throw new Error(`Error API: ${response.status}`);
-      }
+    const clubs = (player.clubs || []).map(c => c.club_name).join(", ");
+    const side = player.side || "No definido";
 
-      const data = await response.json();
-      const player = data.player;
-      const history = data.history;
+    document.getElementById("profileContainer").innerHTML = `
+      <section class="profile-hero">
+        <div>
+          <div class="profile-name">${player.name}</div>
+          <div class="profile-meta">Lado: ${side}</div>
+          <div class="profile-meta">Clubes: ${clubs || "Sin club"}</div>
+        </div>
+        <div class="profile-rating">
+          <div class="value">${Number(player.rating || 1000).toFixed(2)}</div>
+          <div class="label">rating actual</div>
+        </div>
+      </section>
+    `;
 
-      const clubs = player.clubs.map(c => c.club_name).join(", ");
-      const side = player.side || "No definido";
-
-// 🔥 calcular racha
-let streak = 0;
-for (let h of history) {
-  if (h.delta > 0) streak++;
-  else break;
+    renderRatingHistory();
+    renderRatingChart(history);
+  } catch (error) {
+    console.error(error);
+    document.getElementById("profileContainer").innerHTML = "Error cargando perfil.";
+  }
 }
 
-let streakBadge = "";
-if (streak >= 3) {
-  streakBadge = `<div class="badge">🔥 ${streak} victorias seguidas</div>`;
-}
+function renderRatingHistory() {
+  const container = document.getElementById("ratingHistoryList");
+  const button = document.getElementById("toggleRatingHistory");
 
-// historial
-const historyHtml = history.length === 0
-  ? `<div class="meta">Aún no hay historial de rating.</div>`
-  : history.map(h => {
-      const deltaClass = h.delta >= 0 ? "delta-positive" : "delta-negative";
-      const sign = h.delta > 0 ? "+" : "";
-
-      return `
-        <div class="history-row">
-          <div>${getHistoryLabel(h)}</div>
-          <div>
-            ${h.rating_before} → ${h.rating_after}
-            <span class="${deltaClass}">(${sign}${h.delta})</span>
-          </div>
-        </div>
-      `;
-    }).join("");
-
-
-      document.getElementById("profileContainer").innerHTML = `
-        <div class="profile-card">
-          <div class="name">${player.name}</div>
-          <div class="meta">Lado: ${side}</div>
-          <div class="meta">Clubes: ${clubs || "Sin club"}</div>
-          ${streakBadge}
-          <div class="rating">${player.rating}</div>
-          <div class="meta">${player.matches_count} partidos jugados</div>
-        </div>
-
-        <div class="history-card">
-          <h2>Historial de rating</h2>
-          ${historyHtml}
-        </div>
-      `;
-renderRatingChart(history);
-
-    } catch (error) {
-      console.error(error);
-      document.getElementById("profileContainer").innerHTML =
-        "Error cargando perfil. Revisa la consola.";
-    }
+  if (fullRatingHistory.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay historial de rating.</div>`;
+    button.style.display = "none";
+    return;
   }
 
-  loadProfile();
+  const visible = showAllRating ? fullRatingHistory : fullRatingHistory.slice(0, 3);
+
+  container.innerHTML = visible.map(h => {
+    const delta = Number(h.delta || 0);
+    const sign = delta > 0 ? "+" : "";
+    const deltaClass = delta >= 0 ? "delta-positive" : "delta-negative";
+    return `
+      <div class="history-row">
+        <div>
+          <div class="history-title">${getHistoryLabel(h)}</div>
+          <div class="history-subtitle">${formatDate(h.created_at)}</div>
+        </div>
+        <div class="history-score">
+          ${Number(h.rating_before).toFixed(2)} → ${Number(h.rating_after).toFixed(2)}<br>
+          <span class="${deltaClass}">${sign}${delta.toFixed(2)} pts</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  if (fullRatingHistory.length > 3) {
+    button.style.display = "inline-block";
+    button.innerText = showAllRating ? "Ver menos" : "Ver más";
+  }
+}
+
+function toggleRatingHistory() {
+  showAllRating = !showAllRating;
+  renderRatingHistory();
+}
 
 function getHistoryLabel(h) {
-  if (h.source_type === "americano_match") {
-    return `Americano · Partido #${h.source_id}`;
-  }
-
-  if (h.source_type === "americano_podium") {
-    return "Americano · Bonus podio";
-  }
-
-  if (h.match_id) {
-    return `Match #${h.match_id}`;
-  }
-
-  return "Movimiento de rating";
+  if (h.source_type === "americano_match") return `Americano #${h.source_id}`;
+  if (h.source_type === "americano_podium") return "Bonus podio americano";
+  if (h.source_type === "league_match") return `Liga #${h.source_id}`;
+  if (h.source_type === "tournament_match") return `Torneo #${h.source_id}`;
+  if (h.match_id) return `Partido #${h.match_id}`;
+  return "Ajuste de rating";
 }
-
 
 function renderRatingChart(history) {
   const canvas = document.getElementById("ratingChart");
-
   if (!canvas || history.length === 0) return;
 
   const orderedHistory = [...history].reverse();
+  const labels = orderedHistory.map((_, index) => `${index + 1}`);
+  const ratings = orderedHistory.map(h => Number(h.rating_after));
+  const pointColors = orderedHistory.map(h => Number(h.delta || 0) >= 0 ? "#5cad59" : "#dc5858");
 
-  const labels = orderedHistory.map(h => getHistoryLabel(h));
+  if (ratingChart) ratingChart.destroy();
 
-  const ratings = orderedHistory.map(h => h.rating_after);
-
-  const pointColors = orderedHistory.map(h => 
-    h.delta >= 0 ? "#00ff9c" : "#ff6b6b"
-  );
-
-  new Chart(canvas, {
+  ratingChart = new Chart(canvas, {
     type: "line",
     data: {
-      labels: labels,
+      labels,
       datasets: [{
         label: "Rating",
         data: ratings,
         tension: 0.35,
-        pointRadius: 5,
-        pointHoverRadius: 7,
+        pointRadius: 4,
+        pointHoverRadius: 6,
         pointBackgroundColor: pointColors,
-        borderColor: "#8dff9f"
+        borderColor: "#5cad59",
+        borderWidth: 3
       }]
     },
     options: {
       responsive: true,
+      maintainAspectRatio: false,
       plugins: {
+        legend: { display: false },
         tooltip: {
           callbacks: {
-            label: function(context) {
-              const index = context.dataIndex;
-              const delta = orderedHistory[index].delta;
+            title: context => getHistoryLabel(orderedHistory[context[0].dataIndex]),
+            label: context => {
+              const h = orderedHistory[context.dataIndex];
+              const delta = Number(h.delta || 0);
               const sign = delta > 0 ? "+" : "";
-              return `Rating: ${context.raw} (${sign}${delta.toFixed(0)})`;
+              return `Rating ${Number(context.raw).toFixed(2)} (${sign}${delta.toFixed(2)} pts)`;
             }
           }
-        },
-        legend: {
-          labels: { color: "#ffffff" }
         }
-  },
-      
+      },
       scales: {
-        x: {
-          ticks: { color: "#aaaaaa" },
-          grid: { color: "#333333" }
-        },
+        x: { display: false },
         y: {
-          ticks: { color: "#aaaaaa" },
-          grid: { color: "#333333" }
+          ticks: { color: "#6b7280" },
+          grid: { color: "#eef0f2" }
         }
       }
     }
@@ -179,95 +230,139 @@ function renderRatingChart(history) {
 }
 
 async function loadMatchesHistory() {
-  const response = await fetch(`${API_URL}/players/${PLAYER_ID}/matches-history`);
-  const data = await response.json();
+  try {
+    const response = await fetch(`${API_URL}/players/${PLAYER_ID}/matches-history`);
+    const data = await response.json();
 
-  const container = document.getElementById("matchesHistory");
+    const friendly = (data.friendly || []).map(normalizeFriendlyMatch);
+    const americanos = (data.americanos || []).map(normalizeAmericanoMatch);
+    const leagues = (data.leagues || []).map(normalizeLeagueMatch);
 
-const friendlyHtml = data.friendly.map(m => {
-  const won = m.player_team === m.winning_team;
+    fullMatchesHistory = [...friendly, ...americanos, ...leagues]
+      .filter(m => m.score)
+      .sort((a, b) => new Date(b.played_at || 0) - new Date(a.played_at || 0));
 
-const delta = m.delta ?? 0;
-const sign = delta > 0 ? "+" : "";
-
-const resultBadge = won
-  ? `<span class="delta-positive">Ganó · ${sign}${delta} pts</span>`
-  : `<span class="delta-negative">Perdió · ${delta} pts</span>`;
-
-  return `
-    <div class="history-row">
-      <div>
-        <strong>Amistoso · ${m.category || ""}</strong><br>
-
-        <div class="meta">
-          ${new Date(m.played_at).toLocaleDateString()}
-        </div>
-
-        <span class="meta">${m.club_name || ""}</span><br>
-
-        ${(m.team_a || []).join(" / ")}
-        vs
-        ${(m.team_b || []).join(" / ")}
-      </div>
-
-      <div>
-        ${m.score || "Sin resultado"}<br>
-        ${resultBadge}
-      </div>
-    </div>
-  `;
-}).join("");
-
-const americanoHtml = data.americanos.map(m => {
-  const playerId = parseInt(PLAYER_ID);
-
-  const isPairA = [m.a1, m.a2].includes(playerId);
-
-  const won =
-    (isPairA && m.winning_team === "A") ||
-    (!isPairA && m.winning_team === "B");
-
-
-const delta = m.delta ?? 0;
-const sign = delta > 0 ? "+" : "";
-
-const resultBadge = won
-  ? `<span class="delta-positive">Ganó · ${sign}${delta} pts</span>`
-  : `<span class="delta-negative">Perdió · ${delta} pts</span>`;
-
-
-  return `
-    <div class="history-row">
-      <div>
-        <strong>Americano · ${m.category || ""}</strong><br>
-
-        <div class="meta">
-          ${new Date(m.played_at).toLocaleDateString()}
-        </div>
-
-        <span class="meta">${m.club_name || ""}</span><br>
-
-        ${m.pair_a_name}
-        vs
-        ${m.pair_b_name}
-      </div>
-
-      <div>
-        ${m.score || "Sin resultado"}<br>
-        ${resultBadge}
-      </div>
-    </div>
-  `;
-}).join("");
-
-
-  container.innerHTML = friendlyHtml + americanoHtml || "Aún no hay partidos registrados.";
+    renderStats();
+    renderMatchesHistory();
+  } catch (error) {
+    console.error(error);
+    document.getElementById("matchesHistory").innerHTML = "Error cargando historial.";
+  }
 }
 
+function normalizeFriendlyMatch(m) {
+  const won = m.player_team === m.winning_team;
+  return {
+    source_type: "Amistoso",
+    played_at: m.played_at,
+    category: m.category,
+    club_name: m.club_name,
+    score: m.score,
+    delta: Number(m.delta || 0),
+    won,
+    pair_a_name: (m.team_a || []).join(" / "),
+    pair_b_name: (m.team_b || []).join(" / ")
+  };
+}
 
+function normalizeAmericanoMatch(m) {
+  const isPairA = [m.a1, m.a2].includes(PLAYER_ID);
+  const won = (isPairA && m.winning_team === "A") || (!isPairA && m.winning_team === "B");
+  return {
+    source_type: "Americano",
+    played_at: m.played_at,
+    category: m.category,
+    club_name: m.club_name,
+    score: m.score,
+    delta: Number(m.delta || 0),
+    won,
+    pair_a_name: m.pair_a_name,
+    pair_b_name: m.pair_b_name
+  };
+}
+
+function normalizeLeagueMatch(m) {
+  const isPairA = [m.a1, m.a2].includes(PLAYER_ID);
+  const won = (isPairA && m.winner_pair_id === m.pair_a_id) || (!isPairA && m.winner_pair_id === m.pair_b_id);
+  return {
+    source_type: "Liga",
+    played_at: m.played_at,
+    category: m.category,
+    club_name: m.club_name,
+    score: m.score,
+    delta: Number(m.delta || 0),
+    won,
+    pair_a_name: m.pair_a_name,
+    pair_b_name: m.pair_b_name
+  };
+}
+
+function renderStats() {
+  const played = fullMatchesHistory.length;
+  const wins = fullMatchesHistory.filter(m => m.won).length;
+  const losses = played - wins;
+  const winRate = played ? Math.round((wins / played) * 100) : 0;
+  const totalDelta = fullMatchesHistory.reduce((sum, m) => sum + Number(m.delta || 0), 0);
+  const sign = totalDelta > 0 ? "+" : "";
+
+  document.getElementById("statsGrid").innerHTML = `
+    <div class="stat-card"><div class="label">Partidos</div><div class="value">${played}</div></div>
+    <div class="stat-card"><div class="label">Ganados</div><div class="value">${wins}</div></div>
+    <div class="stat-card"><div class="label">Perdidos</div><div class="value">${losses}</div></div>
+    <div class="stat-card"><div class="label">Efectividad</div><div class="value">${winRate}%</div></div>
+    <div class="stat-card"><div class="label">Rating ganado</div><div class="value">${sign}${totalDelta.toFixed(1)}</div></div>
+  `;
+}
+
+function renderMatchesHistory() {
+  const container = document.getElementById("matchesHistory");
+  const button = document.getElementById("toggleMatchesHistory");
+
+  if (fullMatchesHistory.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay partidos registrados.</div>`;
+    button.style.display = "none";
+    return;
+  }
+
+  const visible = showAllMatches ? fullMatchesHistory : fullMatchesHistory.slice(0, 6);
+
+  container.innerHTML = visible.map(m => {
+    const delta = Number(m.delta || 0);
+    const sign = delta > 0 ? "+" : "";
+    const deltaClass = delta >= 0 ? "delta-positive" : "delta-negative";
+    return `
+      <div class="history-row">
+        <div>
+          <div class="history-title">${m.source_type} · ${m.category || "Sin categoría"}</div>
+          <div class="history-subtitle">${formatDate(m.played_at)} · ${m.club_name || "Club no asignado"}</div>
+          <div class="history-subtitle">${m.pair_a_name} vs ${m.pair_b_name}</div>
+        </div>
+        <div class="history-score">
+          ${m.score}<br>
+          <span class="${deltaClass}">${m.won ? "Ganó" : "Perdió"} · ${sign}${delta.toFixed(2)} pts</span>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  if (fullMatchesHistory.length > 6) {
+    button.style.display = "inline-block";
+    button.innerText = showAllMatches ? "Ver menos" : "Ver más";
+  }
+}
+
+function toggleMatchesHistory() {
+  showAllMatches = !showAllMatches;
+  renderMatchesHistory();
+}
+
+function formatDate(value) {
+  if (!value) return "Sin fecha";
+  return new Date(value).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+loadProfile();
 loadMatchesHistory();
-
 </script>
-
 </body>
 </html>

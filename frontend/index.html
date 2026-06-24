@@ -4,91 +4,99 @@
   <meta charset="UTF-8">
   <title>PuntoRank</title>
   <link rel="stylesheet" href="theme.css">
+  <style>
+    .home-shell { max-width: 1120px; margin: 0 auto; }
+    .hero { padding: 32px 0 20px; }
+    .home-section { margin-top: 28px; }
+    .top-grid { display: grid; gap: 12px; }
+    .ranking-card { cursor: pointer; }
+    .rating { color: #3f7f40; }
+    .home-actions { display:flex; gap:12px; flex-wrap:wrap; margin-top:22px; }
+  </style>
 </head>
 <body>
-
+<div class="home-shell">
   <section class="hero">
     <div class="brand">PuntoRank</div>
     <div class="subtitle">
       Ranking validado de jugadores de pádel. Registra partidos, mide tu nivel y compite en el ranking del club.
     </div>
 
-    <div class="actions">
+    <div class="home-actions">
       <a class="btn" href="ranking.html">Ver ranking completo</a>
       <a class="btn secondary" href="club-login.html">Panel clubes</a>
       <a class="btn secondary" href="register.html">Crear perfil</a>
     </div>
   </section>
 
-  <h2 class="section-title">🏆 Top 5 Femenino</h2>
-  <div id="topFemenino"></div>
+  <section class="home-section">
+    <h2 class="section-title">🏆 Top 5 Femenino</h2>
+    <div id="topFemenino" class="top-grid"></div>
+  </section>
 
-  <h2 class="section-title">🏆 Top 5 Masculino</h2>
-  <div id="topMasculino"></div>
+  <section class="home-section">
+    <h2 class="section-title">🏆 Top 5 Masculino</h2>
+    <div id="topMasculino" class="top-grid"></div>
+  </section>
+</div>
 
 <script>
-  const API_URL = "https://puntorank-backend.onrender.com";
+const API_URL = "https://puntorank-backend.onrender.com";
 
-  async function loadTopFive() {
-    try {
-      const femenino = await fetch(`${API_URL}/ranking?club_id=1&gender=femenino`);
-      const masculino = await fetch(`${API_URL}/ranking?club_id=1&gender=masculino`);
+async function loadTopFive() {
+  try {
+    const femenino = await fetch(`${API_URL}/ranking?club_id=1&gender=femenino`);
+    const masculino = await fetch(`${API_URL}/ranking?club_id=1&gender=masculino`);
 
-      const dataF = await femenino.json();
-      const dataM = await masculino.json();
+    const dataF = await femenino.json();
+    const dataM = await masculino.json();
 
-      renderTop(dataF.slice(0, 5), "topFemenino");
-      renderTop(dataM.slice(0, 5), "topMasculino");
+    renderTop(dataF.slice(0, 5), "topFemenino");
+    renderTop(dataM.slice(0, 5), "topMasculino");
+  } catch (error) {
+    console.error(error);
+    document.getElementById("topFemenino").innerHTML = "Error cargando ranking femenino.";
+    document.getElementById("topMasculino").innerHTML = "Error cargando ranking masculino.";
+  }
+}
 
-    } catch (error) {
-      console.error(error);
-      document.getElementById("topFemenino").innerHTML = "Error cargando ranking femenino.";
-      document.getElementById("topMasculino").innerHTML = "Error cargando ranking masculino.";
-    }
+function renderTop(players, containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  if (players.length === 0) {
+    container.innerHTML = `<div class="meta">Sin datos.</div>`;
+    return;
   }
 
-  function renderTop(players, containerId) {
-    const container = document.getElementById(containerId);
-    container.innerHTML = "";
+  players.forEach((player, index) => {
+    const card = document.createElement("div");
+    let topClass = "";
+    if (index === 0) topClass = "top1";
+    if (index === 1) topClass = "top2";
+    if (index === 2) topClass = "top3";
 
-    if (players.length === 0) {
-      container.innerHTML = "Sin datos.";
-      return;
-    }
+    card.className = `ranking-card ${topClass}`;
+    card.onclick = () => goToProfile(player.player_id);
 
-    players.forEach((player, index) => {
-      const card = document.createElement("div");
+    card.innerHTML = `
+      <div class="position">${index + 1}</div>
+      <div>
+        <div class="name">${index === 0 ? "👑 " : ""}${player.player_name}</div>
+        <div class="club">${player.club_name || "Club no asignado"}</div>
+      </div>
+      <div class="rating">${Number(player.rating || 1000).toFixed(2)}</div>
+    `;
 
-      let topClass = "";
-      if (index === 0) topClass = "top1";
-      if (index === 1) topClass = "top2";
-      if (index === 2) topClass = "top3";
+    container.appendChild(card);
+  });
+}
 
-      card.className = `ranking-card ${topClass}`;
+function goToProfile(playerId) {
+  window.location.href = `player-profile.html?id=${playerId}`;
+}
 
-      card.innerHTML = `
-        <div class="position">${index + 1}</div>
-
-        <div>
-          <div class="name" onclick="goToProfile(${player.player_id})">
-            ${index === 0 ? "👑 " : ""}${player.player_name}
-          </div>
-          <div class="club">${player.club_name || "Club no asignado"}</div>
-        </div>
-
-        <div class="rating">${player.rating}</div>
-      `;
-
-      container.appendChild(card);
-    });
-  }
-
-  function goToProfile(playerId) {
-    window.location.href = `player-profile.html?id=${playerId}`;
-  }
-
-  loadTopFive();
+loadTopFive();
 </script>
-
 </body>
 </html>

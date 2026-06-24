@@ -213,7 +213,9 @@ def update_rating_pair_vs_pair(
         cur.execute(
             """
             UPDATE player_ratings
-            SET rating = %s
+            SET rating = %s,
+                matches_count = matches_count + 1,
+                updated_at = NOW()
             WHERE player_id = %s;
             """,
             (after, player_id),
@@ -253,7 +255,9 @@ def update_rating_pair_vs_pair(
         cur.execute(
             """
             UPDATE player_ratings
-            SET rating = %s
+            SET rating = %s,
+                matches_count = matches_count + 1,
+                updated_at = NOW()
             WHERE player_id = %s;
             """,
             (after, player_id),
@@ -1933,9 +1937,66 @@ def get_player_matches_history(player_id: int):
 
             americanos = cur.fetchall()
 
+            # Ligas
+            cur.execute(
+                """
+                SELECT
+                    'league_match' AS source_type,
+                    lm.id AS source_id,
+                    COALESCE(lm.played_at, ls.created_at) AS played_at,
+                    ls.category,
+                    'liga' AS match_type,
+                    c.name AS club_name,
+                    lm.score,
+                    lm.winner_pair_id,
+                    ROUND(rh.delta, 2) AS delta,
+
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                    pa.id AS pair_a_id,
+                    pb.id AS pair_b_id,
+
+                    pa.player_1_id AS a1,
+                    pa.player_2_id AS a2,
+                    pb.player_1_id AS b1,
+                    pb.player_2_id AS b2
+
+                FROM league_matches lm
+                JOIN league_seasons ls ON ls.id = lm.league_id
+                LEFT JOIN clubs c ON c.id = ls.club_id
+
+                JOIN league_pairs pa ON pa.id = lm.pair_a_id
+                JOIN players p1a ON p1a.id = pa.player_1_id
+                JOIN players p2a ON p2a.id = pa.player_2_id
+
+                JOIN league_pairs pb ON pb.id = lm.pair_b_id
+                JOIN players p1b ON p1b.id = pb.player_1_id
+                JOIN players p2b ON p2b.id = pb.player_2_id
+
+                LEFT JOIN rating_history rh
+                    ON rh.player_id = %s
+                   AND rh.source_type = 'league_match'
+                   AND rh.source_id = lm.id
+
+                WHERE %s IN (
+                    pa.player_1_id,
+                    pa.player_2_id,
+                    pb.player_1_id,
+                    pb.player_2_id
+                )
+                  AND lm.status = 'completed'
+                ORDER BY COALESCE(lm.played_at, ls.created_at) DESC, lm.id DESC;
+                """,
+                (player_id, player_id),
+            )
+
+            leagues = cur.fetchall()
+
             return {
                 "friendly": friendly,
                 "americanos": americanos,
+                "leagues": leagues,
             }
 
 @app.post("/leagues")
