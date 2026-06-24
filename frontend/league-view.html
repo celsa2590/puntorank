@@ -4,56 +4,412 @@
   <meta charset="UTF-8">
   <title>PuntoRank - Liga</title>
   <link rel="stylesheet" href="theme.css">
+  <style>
+    .league-shell {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .league-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-start;
+      margin: 18px 0 18px;
+    }
+
+    .league-title-block h1 {
+      margin: 0;
+      font-size: 34px;
+      letter-spacing: -0.04em;
+    }
+
+    .league-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .metric-card {
+      background: rgba(255,255,255,0.72);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 18px;
+      padding: 14px;
+    }
+
+    .metric-label {
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      color: #111827;
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 18px 0;
+      padding: 8px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.65);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      width: fit-content;
+    }
+
+    .tab-btn {
+      background: transparent;
+      color: #374151;
+      border: none;
+      border-radius: 14px;
+      padding: 10px 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: #5cad59;
+      color: white;
+      box-shadow: 0 8px 18px rgba(92,173,89,0.25);
+    }
+
+    .tab-panel {
+      display: none;
+    }
+
+    .tab-panel.active {
+      display: block;
+    }
+
+    .section-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 14px 0 18px;
+    }
+
+    .standings-table-wrapper {
+      overflow-x: auto;
+      border-radius: 18px;
+      border: 1px solid rgba(15,23,42,0.08);
+    }
+
+    .standings-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      min-width: 640px;
+    }
+
+    .standings-table th,
+    .standings-table td {
+      padding: 14px 16px;
+      text-align: left;
+      border-bottom: 1px solid #eef0f2;
+    }
+
+    .standings-table th {
+      color: #6b7280;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: #f8faf8;
+    }
+
+    .standings-table td {
+      color: #111827;
+      font-size: 15px;
+    }
+
+    .position-badge {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      background: #eef2ee;
+      color: #111827;
+    }
+
+    .position-badge.top-1 {
+      background: #facc15;
+    }
+
+    .position-badge.top-2 {
+      background: #d1d5db;
+    }
+
+    .position-badge.top-3 {
+      background: #d97706;
+      color: white;
+    }
+
+    .round-block {
+      margin-bottom: 24px;
+    }
+
+    .round-title {
+      font-size: 18px;
+      font-weight: 900;
+      margin: 12px 0;
+      color: #111827;
+    }
+
+    .match-card {
+      display: grid;
+      grid-template-columns: 1fr minmax(170px, 240px) auto;
+      gap: 14px;
+      align-items: center;
+      border: 1px solid #e5e7eb;
+      background: white;
+      border-radius: 18px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .match-teams {
+      font-weight: 900;
+      color: #111827;
+      line-height: 1.35;
+    }
+
+    .vs {
+      color: #9ca3af;
+      font-weight: 700;
+      padding: 0 6px;
+    }
+
+    .match-status {
+      color: #6b7280;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+
+    .match-card input {
+      margin: 0;
+      width: 100%;
+    }
+
+    .winner-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .winner-actions button {
+      margin-top: 0;
+      padding: 9px 12px;
+      border-radius: 12px;
+      font-size: 13px;
+    }
+
+    .completed-pill {
+      display: inline-block;
+      background: #ecfdf3;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+      padding: 5px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .bracket-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    .bracket-column {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 16px;
+    }
+
+    .bracket-column h3 {
+      margin-top: 0;
+      color: #111827;
+    }
+
+    .bracket-match {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .bracket-team {
+      padding: 8px 0;
+      font-weight: 800;
+      color: #111827;
+    }
+
+    .bracket-team.winner {
+      color: #15803d;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+
+    .summary-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .summary-card .label {
+      color: #6b7280;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .summary-card .value {
+      color: #111827;
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .pair-form {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 18px;
+    }
+
+    @media (max-width: 820px) {
+      .league-header {
+        flex-direction: column;
+      }
+
+      .match-card {
+        grid-template-columns: 1fr;
+      }
+
+      .winner-actions {
+        justify-content: flex-start;
+      }
+    }
+  </style>
 </head>
 <body>
 
-<a class="btn secondary" href="club-dashboard.html">← Volver</a>
+<div class="league-shell">
+  <a class="btn secondary" href="club-dashboard.html">← Volver</a>
 
-<div class="brand">Liga PuntoRank</div>
-
-<div class="card">
-  <h2>Detalle</h2>
-  <div id="leagueDetail" class="meta">Cargando liga...</div>
-</div>
-
-<div class="card">
-  <h2>Parejas inscritas</h2>
-
-  <div style="margin-bottom:18px;">
-    <select id="player1Select"></select>
-    <select id="player2Select"></select>
-
-    <input
-      id="pairName"
-      placeholder="Nombre pareja opcional"
-    >
-
-    <button onclick="createPair()">
-      Agregar pareja
-    </button>
+  <div class="league-header">
+    <div class="league-title-block">
+      <div class="brand">Liga PuntoRank</div>
+      <h1 id="leagueName">Cargando liga...</h1>
+      <div id="leagueDetail" class="meta">Cargando detalle...</div>
+    </div>
   </div>
 
-  <div id="pairsList">Cargando parejas...</div>
-</div>
+  <div class="league-meta-grid">
+    <div class="metric-card">
+      <div class="metric-label">Parejas</div>
+      <div class="metric-value" id="metricPairs">-</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Partidos</div>
+      <div class="metric-value" id="metricMatches">-</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Completados</div>
+      <div class="metric-value" id="metricCompleted">-</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Estado</div>
+      <div class="metric-value" id="metricStatus">-</div>
+    </div>
+  </div>
 
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('standings', this)">Tabla</button>
+    <button class="tab-btn" onclick="showTab('matches', this)">Partidos</button>
+    <button class="tab-btn" onclick="showTab('playoffs', this)">Playoffs</button>
+    <button class="tab-btn" onclick="showTab('pairs', this)">Parejas</button>
+    <button class="tab-btn" onclick="showTab('summary', this)">Resumen</button>
+  </div>
 
+  <section id="tab-standings" class="tab-panel active">
+    <div class="card">
+      <h2>Tabla de posiciones</h2>
+      <div class="meta">Ordenada por puntos, partidos ganados y nombre de pareja.</div>
+      <div id="standingsList" style="margin-top:16px;">Cargando tabla...</div>
+    </div>
+  </section>
 
+  <section id="tab-matches" class="tab-panel">
+    <div class="card">
+      <h2>Partidos de liga</h2>
+      <div class="section-actions">
+        <button onclick="generateFixture()">Generar fixture</button>
+      </div>
+      <div id="matchesList">Cargando partidos...</div>
+    </div>
+  </section>
 
-<div class="card">
-  <h2>Fixture</h2>
-  <button onclick="generateFixture()">Generar fixture</button>
-  <div id="matchesList" style="margin-top:16px;">Cargando partidos...</div>
-</div>
+  <section id="tab-playoffs" class="tab-panel">
+    <div class="card">
+      <h2>Playoffs</h2>
+      <div class="meta">Genera semifinales y finales una vez completada la fase regular.</div>
+      <div class="section-actions">
+        <button onclick="generatePlayoffs()">Generar playoffs</button>
+        <button onclick="generateFinals()">Generar finales</button>
+      </div>
+      <div id="playoffBracket">Cargando playoffs...</div>
+    </div>
+  </section>
 
-<button onclick="generatePlayoffs()">Generar playoffs</button>
+  <section id="tab-pairs" class="tab-panel">
+    <div class="card">
+      <h2>Parejas inscritas</h2>
+      <div class="pair-form">
+        <div>
+          <label>Jugador/a 1</label>
+          <select id="player1Select"></select>
+        </div>
+        <div>
+          <label>Jugador/a 2</label>
+          <select id="player2Select"></select>
+        </div>
+        <div>
+          <label>Nombre pareja opcional</label>
+          <input id="pairName" placeholder="Ej: Las Top">
+        </div>
+        <button onclick="createPair()">Agregar pareja</button>
+      </div>
+      <div id="pairsList">Cargando parejas...</div>
+    </div>
+  </section>
 
-<button onclick="generateFinals()">Generar finales</button>
-
-<div class="card">
-  <h2>Tabla de posiciones</h2>
-  <button onclick="finishLeague()">Finalizar liga</button>
-  <div id="finishMessage" class="meta" style="margin-top:12px;"></div>
-  <div id="standingsList" style="margin-top:16px;">Cargando tabla...</div>
+  <section id="tab-summary" class="tab-panel">
+    <div class="card">
+      <h2>Resumen final</h2>
+      <div id="summaryBox">Cargando resumen...</div>
+      <div class="section-actions">
+        <button onclick="finishLeague()">Finalizar liga</button>
+      </div>
+      <div id="finishMessage" class="meta"></div>
+    </div>
+  </section>
 </div>
 
 <script>
@@ -63,10 +419,35 @@ const params = new URLSearchParams(window.location.search);
 const leagueId = params.get("id");
 const clubId = localStorage.getItem("club_id");
 let players = [];
-
+let currentLeague = null;
+let currentPairs = [];
+let currentMatches = [];
+let currentStandings = [];
 
 if (!leagueId) {
   alert("Falta id de liga");
+}
+
+function showTab(tabName, button) {
+  document.querySelectorAll(".tab-panel").forEach(panel => {
+    panel.classList.remove("active");
+  });
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.classList.remove("active");
+  });
+
+  document.getElementById(`tab-${tabName}`).classList.add("active");
+  button.classList.add("active");
+}
+
+async function refreshAll() {
+  await loadLeague();
+  await loadPairs();
+  await loadMatches();
+  await loadStandings();
+  renderPlayoffs();
+  renderSummary();
+  updateMetrics();
 }
 
 async function loadLeague() {
@@ -74,55 +455,50 @@ async function loadLeague() {
   const leagues = await response.json();
 
   const league = leagues.find(l => l.id == leagueId);
+  currentLeague = league;
 
   if (!league) {
+    document.getElementById("leagueName").innerText = "Liga no encontrada";
     document.getElementById("leagueDetail").innerHTML = "Liga no encontrada.";
     return;
   }
 
-window.leagueStatus = league.status;
+  window.leagueStatus = league.status;
 
+  document.getElementById("leagueName").innerText = league.name;
   document.getElementById("leagueDetail").innerHTML = `
-    Nombre: ${league.name}<br>
-    Categoría: ${league.category}<br>
-    Género: ${league.gender}<br>
-    Formato: ${league.format}<br>
-    Estado: ${league.status}<br>
-    Parejas: ${league.pairs_count}
+    ${league.category || "Sin categoría"} · ${league.gender || "Sin género"} · ${league.format || "Formato no definido"}
   `;
 }
 
 async function loadPairs() {
   const response = await fetch(`${API_URL}/leagues/${leagueId}/pairs`);
   const pairs = await response.json();
+  currentPairs = pairs;
 
   const container = document.getElementById("pairsList");
 
   if (pairs.length === 0) {
-    container.innerHTML = "Aún no hay parejas inscritas.";
+    container.innerHTML = `<div class="meta">Aún no hay parejas inscritas.</div>`;
     return;
   }
 
-  container.innerHTML = pairs.map(p => `
+  container.innerHTML = pairs.map((p, index) => `
     <div class="row">
-      <strong>${p.pair_name || `${p.player_1_name} / ${p.player_2_name}`}</strong><br>
+      <strong>${index + 1}. ${p.pair_name || `${p.player_1_name} / ${p.player_2_name}`}</strong><br>
       <span class="meta">${p.player_1_name} / ${p.player_2_name}</span>
     </div>
   `).join("");
 }
 
 async function generateFixture() {
+  const matchesResponse = await fetch(`${API_URL}/leagues/${leagueId}/matches`);
+  const existingMatches = await matchesResponse.json();
 
-const matchesResponse = await fetch(
-  `${API_URL}/leagues/${leagueId}/matches`
-);
-
-const existingMatches = await matchesResponse.json();
-
-if (existingMatches.length > 0) {
-  alert("El fixture ya fue generado.");
-  return;
-}
+  if (existingMatches.length > 0) {
+    alert("El fixture ya fue generado.");
+    return;
+  }
 
   const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-fixture`, {
     method: "POST"
@@ -135,66 +511,82 @@ if (existingMatches.length > 0) {
     return;
   }
 
-  await loadMatches();
-  await loadStandings();
+  await refreshAll();
 }
 
 async function loadMatches() {
   const response = await fetch(`${API_URL}/leagues/${leagueId}/matches`);
   const matches = await response.json();
+  currentMatches = matches;
 
+  const regularMatches = matches.filter(m => m.phase !== "playoff");
   const container = document.getElementById("matchesList");
 
-  if (matches.length === 0) {
-    container.innerHTML = "Aún no hay partidos generados.";
+  if (regularMatches.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay partidos generados.</div>`;
     return;
   }
 
-  container.innerHTML = matches.map(m => `
-    <div class="row">
-      <strong>${getMatchTitle(m)}</strong><br>
-      <span class="meta">${m.pair_a_name} vs ${m.pair_b_name}</span><br>
+  const grouped = groupBy(regularMatches, m => `Ronda ${m.round_number || 1}`);
+
+  container.innerHTML = Object.entries(grouped).map(([roundName, roundMatches]) => `
+    <div class="round-block">
+      <div class="round-title">${roundName}</div>
+      ${roundMatches.map(renderMatchCard).join("")}
+    </div>
+  `).join("");
+}
+
+function renderMatchCard(m) {
+  const isCompleted = m.status === "completed";
+  const winnerName = getWinnerName(m);
+
+  return `
+    <div class="match-card">
+      <div>
+        <div class="match-teams">
+          ${m.pair_a_name} <span class="vs">vs</span> ${m.pair_b_name}
+        </div>
+        <div class="match-status">
+          ${isCompleted ? `<span class="completed-pill">Completado</span>` : "Pendiente"}
+          ${m.score ? ` · Resultado: ${m.score}` : " · Sin resultado"}
+          ${winnerName ? ` · Ganó: ${winnerName}` : ""}
+        </div>
+      </div>
 
       <input
         id="score_${m.id}"
         placeholder="Ej: 6-4 7-5"
         value="${m.score || ""}"
+        ${window.leagueStatus === "completed" ? "disabled" : ""}
       >
 
-      <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">
-        Ganó ${m.pair_a_name}
-      </button>
-
-      <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">
-        Ganó ${m.pair_b_name}
-      </button>
-
-      <div class="meta">
-        Estado: ${m.status} · Resultado: ${m.score || "sin resultado"}
+      <div class="winner-actions">
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">
+          Ganó A
+        </button>
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">
+          Ganó B
+        </button>
       </div>
     </div>
-  `).join("");
+  `;
 }
 
-function getMatchTitle(m) {
-  if (m.phase === "playoff") {
-    const cupName = m.cup === "oro" ? "Copa Oro" : "Copa Plata";
-    const roundName = m.bracket_round === "semifinal" ? "Semifinal" : "Final";
-    return `${cupName} · ${roundName}`;
-  }
-
-  return `Ronda ${m.round_number}`;
+function getWinnerName(m) {
+  if (!m.winner_pair_id) return "";
+  if (m.winner_pair_id === m.pair_a_id) return m.pair_a_name;
+  if (m.winner_pair_id === m.pair_b_id) return m.pair_b_name;
+  return "";
 }
 
 async function saveLeagueResult(matchId, winnerPairId) {
-
-if (window.leagueStatus === "completed") {
-  alert("No puedes editar resultados de una liga finalizada.");
-  return;
-}
+  if (window.leagueStatus === "completed") {
+    alert("No puedes editar resultados de una liga finalizada.");
+    return;
+  }
 
   const score = document.getElementById(`score_${matchId}`).value.trim();
-
 
   if (!score) {
     alert("Debes ingresar el resultado.");
@@ -217,29 +609,49 @@ if (window.leagueStatus === "completed") {
     return;
   }
 
-  await loadMatches();
-  await loadStandings();
+  await refreshAll();
 }
 
 async function loadStandings() {
   const response = await fetch(`${API_URL}/leagues/${leagueId}/standings`);
   const standings = await response.json();
+  currentStandings = standings;
 
   const container = document.getElementById("standingsList");
 
   if (standings.length === 0) {
-    container.innerHTML = "Aún no hay tabla.";
+    container.innerHTML = `<div class="meta">Aún no hay tabla.</div>`;
     return;
   }
 
-  container.innerHTML = standings.map((row, index) => `
-    <div class="row">
-      <strong>${index + 1}. ${row.pair_name}</strong><br>
-      <span class="meta">
-        PJ: ${row.played} · PG: ${row.wins} · PP: ${row.losses} · Pts: ${row.points}
-      </span>
+  container.innerHTML = `
+    <div class="standings-table-wrapper">
+      <table class="standings-table">
+        <thead>
+          <tr>
+            <th>Pos</th>
+            <th>Pareja</th>
+            <th>PJ</th>
+            <th>PG</th>
+            <th>PP</th>
+            <th>Pts</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${standings.map((row, index) => `
+            <tr>
+              <td><span class="position-badge top-${index + 1}">${index + 1}</span></td>
+              <td><strong>${row.pair_name}</strong></td>
+              <td>${row.played}</td>
+              <td>${row.wins}</td>
+              <td>${row.losses}</td>
+              <td><strong>${row.points}</strong></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     </div>
-  `).join("");
+  `;
 }
 
 async function finishLeague() {
@@ -257,31 +669,21 @@ async function finishLeague() {
     return;
   }
 
-  document.getElementById("finishMessage").innerHTML =
-    "✅ Liga finalizada correctamente.";
+  document.getElementById("finishMessage").innerHTML = "✅ Liga finalizada correctamente.";
+  window.leagueStatus = "completed";
 
-window.leagueStatus = "completed";
-
-  await loadLeague();
-  await loadStandings();
-  await loadMatches();
+  await refreshAll();
 }
 
 async function loadPlayers() {
-
-  const response = await fetch(
-    `${API_URL}/clubs/${clubId}/players`
-  );
-
+  const response = await fetch(`${API_URL}/clubs/${clubId}/players`);
   players = await response.json();
 
   const p1 = document.getElementById("player1Select");
   const p2 = document.getElementById("player2Select");
 
   const options = players.map(p => `
-    <option value="${p.id}">
-      ${p.name}
-    </option>
+    <option value="${p.id}">${p.name}</option>
   `).join("");
 
   p1.innerHTML = options;
@@ -289,64 +691,45 @@ async function loadPlayers() {
 }
 
 async function createPair() {
-
-  const player1 = parseInt(
-    document.getElementById("player1Select").value
-  );
-
-  const player2 = parseInt(
-    document.getElementById("player2Select").value
-  );
-
-  const pairName =
-    document.getElementById("pairName").value.trim();
+  const player1 = parseInt(document.getElementById("player1Select").value);
+  const player2 = parseInt(document.getElementById("player2Select").value);
+  const pairName = document.getElementById("pairName").value.trim();
 
   if (player1 === player2) {
     alert("No puedes seleccionar la misma jugadora.");
     return;
   }
 
-const existingPairsResponse = await fetch(`${API_URL}/leagues/${leagueId}/pairs`);
-const existingPairs = await existingPairsResponse.json();
+  const existingPairsResponse = await fetch(`${API_URL}/leagues/${leagueId}/pairs`);
+  const existingPairs = await existingPairsResponse.json();
 
-const alreadyExists = existingPairs.some(pair =>
-  (pair.player_1_id === player1 && pair.player_2_id === player2) ||
-  (pair.player_1_id === player2 && pair.player_2_id === player1)
-);
-
-if (alreadyExists) {
-  alert("Esta pareja ya está inscrita en la liga.");
-  return;
-}
-
-const matchesResponse = await fetch(
-  `${API_URL}/leagues/${leagueId}/matches`
-);
-
-const matches = await matchesResponse.json();
-
-if (matches.length > 0) {
-  alert(
-    "No puedes agregar parejas después de generar el fixture."
+  const alreadyExists = existingPairs.some(pair =>
+    (pair.player_1_id === player1 && pair.player_2_id === player2) ||
+    (pair.player_1_id === player2 && pair.player_2_id === player1)
   );
-  return;
-}
 
+  if (alreadyExists) {
+    alert("Esta pareja ya está inscrita en la liga.");
+    return;
+  }
 
-  const response = await fetch(
-    `${API_URL}/leagues/${leagueId}/pairs`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        player_1_id: player1,
-        player_2_id: player2,
-        pair_name: pairName || null
-      })
-    }
-  );
+  const matchesResponse = await fetch(`${API_URL}/leagues/${leagueId}/matches`);
+  const matches = await matchesResponse.json();
+
+  if (matches.length > 0) {
+    alert("No puedes agregar parejas después de generar el fixture.");
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/leagues/${leagueId}/pairs`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      player_1_id: player1,
+      player_2_id: player2,
+      pair_name: pairName || null
+    })
+  });
 
   const result = await response.json();
 
@@ -356,11 +739,8 @@ if (matches.length > 0) {
   }
 
   document.getElementById("pairName").value = "";
-
-  await loadPairs();
-  await loadStandings();
+  await refreshAll();
 }
-
 
 async function generatePlayoffs() {
   const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-playoffs`, {
@@ -374,8 +754,7 @@ async function generatePlayoffs() {
     return;
   }
 
-  await loadMatches();
-  await loadStandings();
+  await refreshAll();
 }
 
 async function generateFinals() {
@@ -390,15 +769,104 @@ async function generateFinals() {
     return;
   }
 
-  await loadMatches();
-  await loadStandings();
+  await refreshAll();
 }
 
-loadLeague();
-loadPairs();
-loadMatches();
-loadStandings();
+function renderPlayoffs() {
+  const container = document.getElementById("playoffBracket");
+  const playoffMatches = currentMatches.filter(m => m.phase === "playoff");
+
+  if (playoffMatches.length === 0) {
+    container.innerHTML = `<div class="meta">Aún no hay playoffs generados.</div>`;
+    return;
+  }
+
+  const semifinals = playoffMatches.filter(m => m.bracket_round === "semifinal");
+  const finals = playoffMatches.filter(m => m.bracket_round === "final");
+
+  container.innerHTML = `
+    <div class="bracket-grid">
+      <div class="bracket-column">
+        <h3>Semifinales</h3>
+        ${semifinals.length ? semifinals.map(renderBracketMatch).join("") : `<div class="meta">Sin semifinales.</div>`}
+      </div>
+      <div class="bracket-column">
+        <h3>Finales</h3>
+        ${finals.length ? finals.map(renderBracketMatch).join("") : `<div class="meta">Sin finales.</div>`}
+      </div>
+    </div>
+  `;
+}
+
+function renderBracketMatch(m) {
+  const title = `${m.cup === "oro" ? "Copa Oro" : "Copa Plata"} · ${m.bracket_round === "final" ? "Final" : "Semifinal"}`;
+  const winner = getWinnerName(m);
+  return `
+    <div class="bracket-match">
+      <div class="meta">${title}</div>
+      <div class="bracket-team ${winner === m.pair_a_name ? "winner" : ""}">${m.pair_a_name}</div>
+      <div class="bracket-team ${winner === m.pair_b_name ? "winner" : ""}">${m.pair_b_name}</div>
+      <input id="score_${m.id}" placeholder="Ej: 6-4 7-5" value="${m.score || ""}">
+      <div class="winner-actions" style="justify-content:flex-start; margin-top:10px;">
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_a_id})">Ganó A</button>
+        <button onclick="saveLeagueResult(${m.id}, ${m.pair_b_id})">Ganó B</button>
+      </div>
+      <div class="match-status">${m.score ? `Resultado: ${m.score}` : "Sin resultado"}${winner ? ` · Ganó: ${winner}` : ""}</div>
+    </div>
+  `;
+}
+
+function renderSummary() {
+  const container = document.getElementById("summaryBox");
+  const finals = currentMatches.filter(m => m.phase === "playoff" && m.bracket_round === "final");
+
+  const oroFinal = finals.find(m => m.cup === "oro");
+  const plataFinal = finals.find(m => m.cup === "plata");
+
+  const oroWinner = oroFinal ? getWinnerName(oroFinal) : "Pendiente";
+  const plataWinner = plataFinal ? getWinnerName(plataFinal) : "Pendiente";
+  const leader = currentStandings[0]?.pair_name || "Pendiente";
+
+  container.innerHTML = `
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="label">Líder fase regular</div>
+        <div class="value">${leader}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Campeón Copa Oro</div>
+        <div class="value">🏆 ${oroWinner}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Campeón Copa Plata</div>
+        <div class="value">🥈 ${plataWinner}</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Estado</div>
+        <div class="value">${currentLeague?.status || "-"}</div>
+      </div>
+    </div>
+  `;
+}
+
+function updateMetrics() {
+  document.getElementById("metricPairs").innerText = currentPairs.length;
+  document.getElementById("metricMatches").innerText = currentMatches.length;
+  document.getElementById("metricCompleted").innerText = currentMatches.filter(m => m.status === "completed").length;
+  document.getElementById("metricStatus").innerText = currentLeague?.status || "-";
+}
+
+function groupBy(items, keyFn) {
+  return items.reduce((acc, item) => {
+    const key = keyFn(item);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+}
+
 loadPlayers();
+refreshAll();
 </script>
 
 </body>
