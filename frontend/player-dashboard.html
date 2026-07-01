@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>PuntoRank - Mi cuenta</title>
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    .dash-shell { max-width: 1120px; margin: 0 auto; }
+    .dash-header { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; margin-bottom:18px; }
+    .dash-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:14px; }
+    .metric-card { background:white; border:1px solid #e5e7eb; border-radius:18px; padding:16px; }
+    .metric-label { color:#6b7280; font-size:13px; margin-bottom:6px; }
+    .metric-value { color:#111827; font-weight:900; font-size:26px; }
+    .quick-actions { display:flex; gap:10px; flex-wrap:wrap; margin:16px 0; }
+    .item-row { border-bottom:1px solid #e5e7eb; padding:12px 0; }
+    .item-row:last-child { border-bottom:0; }
+  </style>
+</head>
+<body>
+<div class="dash-shell">
+  <div class="dash-header">
+    <div>
+      <div class="brand">Mi PuntoRank</div>
+      <div id="playerSubtitle" class="subtitle">Cargando cuenta...</div>
+    </div>
+    <button class="secondary" onclick="logout()">Cerrar sesión</button>
+  </div>
+
+  <div class="quick-actions">
+    <a class="btn" href="create-match.html">Registrar partido</a>
+    <a class="btn secondary" id="profileLink" href="#">Ver perfil público</a>
+    <a class="btn secondary" href="ranking.html">Ranking</a>
+  </div>
+
+  <div class="dash-grid">
+    <div class="metric-card"><div class="metric-label">Rating actual</div><div class="metric-value" id="ratingValue">-</div></div>
+    <div class="metric-card"><div class="metric-label">Partidos jugados</div><div class="metric-value" id="matchesValue">-</div></div>
+    <div class="metric-card"><div class="metric-label">Balance rating</div><div class="metric-value" id="deltaValue">-</div></div>
+  </div>
+
+  <div class="dash-grid" style="margin-top:18px;">
+    <div class="card"><h2>Mis ligas</h2><div id="leaguesBox">Cargando...</div></div>
+    <div class="card"><h2>Mis torneos</h2><div id="tournamentsBox">Cargando...</div></div>
+  </div>
+
+  <div class="dash-grid" style="margin-top:18px;">
+    <div class="card"><h2>Últimos partidos</h2><div id="matchesBox">Cargando...</div></div>
+    <div class="card"><h2>Últimos movimientos</h2><div id="ratingBox">Cargando...</div></div>
+  </div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+const token = localStorage.getItem("player_token");
+if (!token) window.location.href = "player-login.html";
+
+function fmt(n) {
+  const num = Number(n || 0);
+  return num > 0 ? `+${num.toFixed(2)}` : num.toFixed(2);
+}
+
+async function loadDashboard() {
+  const response = await fetch(`${API_URL}/player/dashboard?token=${encodeURIComponent(token)}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    localStorage.removeItem("player_token");
+    window.location.href = "player-login.html";
+    return;
+  }
+
+  const p = data.player;
+  document.getElementById("playerSubtitle").innerText = `${p.name} · ${p.category || "Sin categoría"} · ${p.gender || "Sin género"}`;
+  document.getElementById("profileLink").href = `player-profile.html?id=${p.id}`;
+  document.getElementById("ratingValue").innerText = Number(data.rating?.rating || 1000).toFixed(2);
+  document.getElementById("matchesValue").innerText = data.rating?.matches_count || 0;
+  document.getElementById("deltaValue").innerText = fmt(data.stats?.total_delta || 0);
+
+  renderList("leaguesBox", data.leagues || [], l => `
+    <strong>${l.name}</strong><br>
+    <span class="meta">${l.category || "-"} · ${l.gender || "-"} · ${l.status || "-"}<br>${l.pair_name || ""}</span>
+  `, "Aún no estás inscrito/a en ligas.");
+
+  renderList("tournamentsBox", data.tournaments || [], t => `
+    <strong>${t.name}</strong><br>
+    <span class="meta">${t.category || "-"} · ${t.gender || "-"} · ${t.status || "-"}<br>${t.pair_name || ""} · Pago: ${t.payment_status || "pendiente"}</span>
+  `, "Aún no estás inscrito/a en torneos.");
+
+  renderList("matchesBox", data.recent_matches || [], m => `
+    <strong>${(m.team_a || []).join(" / ")} vs ${(m.team_b || []).join(" / ")}</strong><br>
+    <span class="meta">${m.club_name || "Club"} · ${m.score || "sin resultado"} · Estado: ${m.status}</span>
+  `, "Aún no tienes partidos registrados.");
+
+  renderList("ratingBox", data.recent_rating || [], r => `
+    <strong>${fmt(r.delta)}</strong><br>
+    <span class="meta">${r.source_type || "partido"} · ${r.rating_before} → ${r.rating_after}</span>
+  `, "Aún no hay movimientos de rating.");
+}
+
+function renderList(id, items, renderer, emptyText) {
+  const box = document.getElementById(id);
+  if (!items.length) {
+    box.innerHTML = `<div class="meta">${emptyText}</div>`;
+    return;
+  }
+  box.innerHTML = items.map(item => `<div class="item-row">${renderer(item)}</div>`).join("");
+}
+
+async function logout() {
+  await fetch(`${API_URL}/player/logout`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({session_token: token})
+  });
+  localStorage.removeItem("player_token");
+  localStorage.removeItem("player_id");
+  localStorage.removeItem("player_name");
+  window.location.href = "index.html";
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

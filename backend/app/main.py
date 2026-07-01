@@ -1,6 +1,9 @@
 import os
 import psycopg2
 import random
+import hashlib
+import secrets
+from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
@@ -3989,3 +3992,717 @@ def get_tournament_summary(tournament_id: int):
                 "playoff": playoff,
                 "pairs": pairs,
             }
+
+
+# =========================
+# Player accounts / auth MVP
+# =========================
+
+PLAYER_SESSION_DAYS = 30
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        120000,
+    ).hex()
+    return f"{salt}${digest}"
+
+def verify_password(password: str, stored_hash: str | None) -> bool:
+    if not stored_hash or "$" not in stored_hash:
+        return False
+    salt, digest = stored_hash.split("$", 1)
+    candidate = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        120000,
+    ).hex()
+    return secrets.compare_digest(candidate, digest)
+
+def hash_session_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+def create_player_session(cur, player_id: int):
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hash_session_token(raw_token)
+
+    cur.execute(
+        """
+        INSERT INTO player_sessions
+            (player_id, token_hash, expires_at)
+        VALUES
+            (%s, %s, NOW() + INTERVAL '30 days')
+        RETURNING id, expires_at;
+        """,
+        (player_id, token_hash),
+    )
+
+    session = cur.fetchone()
+    return {
+        "token": raw_token,
+        "expires_at": session["expires_at"],
+    }
+
+def get_authenticated_player(cur, session_token: str):
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Sesión requerida")
+
+    token_hash = hash_session_token(session_token)
+
+    cur.execute(
+        """
+        SELECT
+            p.id,
+            p.name,
+            p.email,
+            p.club_id,
+            p.gender,
+            p.category,
+            p.side,
+            p.is_registered,
+            p.email_verified
+        FROM player_sessions ps
+        JOIN players p
+            ON p.id = ps.player_id
+        WHERE ps.token_hash = %s
+          AND ps.revoked_at IS NULL
+          AND ps.expires_at > NOW();
+        """,
+        (token_hash,),
+    )
+
+    player = cur.fetchone()
+
+    if not player:
+        raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
+
+    return player
+
+class PlayerAccountRegister(BaseModel):
+    name: str
+    email: str
+    password: str
+    club_id: int | None = None
+    gender: str | None = None
+    side: str | None = None
+    category: str | None = None
+
+class PlayerAccountLogin(BaseModel):
+    email: str
+    password: str
+
+class PlayerSessionRequest(BaseModel):
+    session_token: str
+
+class PlayerMatchCreate(BaseModel):
+    session_token: str
+    club_id: int
+    team_a_player_ids: list[int]
+    team_b_player_ids: list[int]
+    score: str
+    winning_team: str
+    category: str | None = None
+    played_at: str | None = None
+
+class PlayerMatchConfirm(BaseModel):
+    session_token: str
+
+@app.post("/player/register")
+def player_account_register(data: PlayerAccountRegister):
+    email = data.email.strip().lower()
+
+    if len(data.password) < 6:
+        raise HTTPException(status_code=400, detail="La clave debe tener al menos 6 caracteres")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM players
+                WHERE LOWER(email) = %s
+                LIMIT 1;
+                """,
+                (email,),
+            )
+
+            existing = cur.fetchone()
+
+            if existing:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Ya existe un perfil con este correo. Ingresa con tu cuenta.",
+                )
+
+            verification_token = secrets.token_urlsafe(24)
+
+            cur.execute(
+                """
+                INSERT INTO players
+                    (
+                        name,
+                        email,
+                        club_id,
+                        gender,
+                        side,
+                        category,
+                        is_registered,
+                        password_hash,
+                        email_verified,
+                        email_verification_token
+                    )
+                VALUES
+                    (%s, %s, %s, %s, %s, %s, TRUE, %s, FALSE, %s)
+                RETURNING
+                    id,
+                    name,
+                    email,
+                    club_id,
+                    gender,
+                    category,
+                    side,
+                    is_registered,
+                    email_verified;
+                """,
+                (
+                    data.name.strip(),
+                    email,
+                    data.club_id,
+                    data.gender,
+                    data.side,
+                    data.category,
+                    hash_password(data.password),
+                    verification_token,
+                ),
+            )
+
+            player = cur.fetchone()
+
+            if data.club_id is not None:
+                cur.execute(
+                    """
+                    INSERT INTO player_clubs (player_id, club_id, is_home_club)
+                    VALUES (%s, %s, TRUE)
+                    ON CONFLICT (player_id, club_id) DO NOTHING;
+                    """,
+                    (player["id"], data.club_id),
+                )
+
+            ensure_player_rating(cur, player["id"])
+            session = create_player_session(cur, player["id"])
+
+            conn.commit()
+
+            # MVP: devolvemos verification_token solo para pruebas.
+            # Luego se envía por correo y no se expone en la respuesta.
+            return {
+                "player": player,
+                "session": session,
+                "verification_token": verification_token,
+                "message": "Perfil creado correctamente",
+            }
+
+@app.post("/player/login")
+def player_account_login(data: PlayerAccountLogin):
+    email = data.email.strip().lower()
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    email,
+                    club_id,
+                    gender,
+                    category,
+                    side,
+                    is_registered,
+                    email_verified,
+                    password_hash
+                FROM players
+                WHERE LOWER(email) = %s
+                LIMIT 1;
+                """,
+                (email,),
+            )
+
+            player = cur.fetchone()
+
+            if not player or not verify_password(data.password, player["password_hash"]):
+                raise HTTPException(status_code=401, detail="Correo o clave incorrectos")
+
+            cur.execute(
+                """
+                UPDATE players
+                SET last_login_at = NOW()
+                WHERE id = %s;
+                """,
+                (player["id"],),
+            )
+
+            session = create_player_session(cur, player["id"])
+
+            safe_player = dict(player)
+            safe_player.pop("password_hash", None)
+
+            conn.commit()
+
+            return {
+                "player": safe_player,
+                "session": session,
+            }
+
+@app.post("/player/logout")
+def player_logout(data: PlayerSessionRequest):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE player_sessions
+                SET revoked_at = NOW()
+                WHERE token_hash = %s;
+                """,
+                (hash_session_token(data.session_token),),
+            )
+            conn.commit()
+            return {"message": "Sesión cerrada"}
+
+@app.get("/player/me")
+def player_me(token: str):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, token)
+            return player
+
+@app.get("/player/dashboard")
+def player_dashboard(token: str):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, token)
+            player_id = player["id"]
+
+            cur.execute(
+                """
+                SELECT
+                    ROUND(COALESCE(pr.rating, 1000), 2) AS rating,
+                    COALESCE(pr.matches_count, 0) AS matches_count
+                FROM players p
+                LEFT JOIN player_ratings pr
+                    ON pr.player_id = p.id
+                WHERE p.id = %s;
+                """,
+                (player_id,),
+            )
+            rating = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(*) FILTER (WHERE delta > 0) AS positive_movements,
+                    COUNT(*) FILTER (WHERE delta < 0) AS negative_movements,
+                    COALESCE(SUM(delta), 0) AS total_delta
+                FROM rating_history
+                WHERE player_id = %s;
+                """,
+                (player_id,),
+            )
+            stats = cur.fetchone()
+
+            cur.execute(
+                """
+                SELECT
+                    rh.source_type,
+                    rh.source_id,
+                    ROUND(rh.rating_before, 2) AS rating_before,
+                    ROUND(rh.rating_after, 2) AS rating_after,
+                    ROUND(rh.delta, 2) AS delta,
+                    rh.created_at
+                FROM rating_history rh
+                WHERE rh.player_id = %s
+                ORDER BY rh.created_at DESC
+                LIMIT 5;
+                """,
+                (player_id,),
+            )
+            recent_rating = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    ls.id,
+                    ls.name,
+                    ls.category,
+                    ls.gender,
+                    ls.status,
+                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name
+                FROM league_pairs lp
+                JOIN league_seasons ls
+                    ON ls.id = lp.league_id
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
+                WHERE %s IN (lp.player_1_id, lp.player_2_id)
+                ORDER BY ls.created_at DESC;
+                """,
+                (player_id,),
+            )
+            leagues = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    te.id,
+                    te.name,
+                    te.category,
+                    te.gender,
+                    te.status,
+                    COALESCE(tp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+                    tp.payment_status
+                FROM tournament_pairs tp
+                JOIN tournament_events te
+                    ON te.id = tp.tournament_id
+                JOIN players p1
+                    ON p1.id = tp.player_1_id
+                JOIN players p2
+                    ON p2.id = tp.player_2_id
+                WHERE %s IN (tp.player_1_id, tp.player_2_id)
+                ORDER BY te.created_at DESC;
+                """,
+                (player_id,),
+            )
+            tournaments = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.status,
+                    m.played_at,
+                    m.category,
+                    m.match_type,
+                    c.name AS club_name,
+                    mr.score,
+                    mr.winning_team,
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'A') AS team_a,
+                    ARRAY_AGG(p.name) FILTER (WHERE mp.team = 'B') AS team_b
+                FROM matches m
+                JOIN match_players mp
+                    ON mp.match_id = m.id
+                JOIN players p
+                    ON p.id = mp.player_id
+                LEFT JOIN match_results mr
+                    ON mr.match_id = m.id
+                LEFT JOIN clubs c
+                    ON c.id = m.club_id
+                WHERE m.id IN (
+                    SELECT match_id
+                    FROM match_players
+                    WHERE player_id = %s
+                )
+                GROUP BY
+                    m.id,
+                    m.status,
+                    m.played_at,
+                    m.category,
+                    m.match_type,
+                    c.name,
+                    mr.score,
+                    mr.winning_team
+                ORDER BY m.played_at DESC, m.id DESC
+                LIMIT 10;
+                """,
+                (player_id,),
+            )
+            recent_matches = cur.fetchall()
+
+            return {
+                "player": player,
+                "rating": rating,
+                "stats": stats,
+                "recent_rating": recent_rating,
+                "leagues": leagues,
+                "tournaments": tournaments,
+                "recent_matches": recent_matches,
+            }
+
+@app.post("/player/matches/report")
+def player_report_match(data: PlayerMatchCreate):
+    if len(data.team_a_player_ids) != 2 or len(data.team_b_player_ids) != 2:
+        raise HTTPException(status_code=400, detail="Cada equipo debe tener exactamente 2 jugadores")
+
+    all_players = data.team_a_player_ids + data.team_b_player_ids
+
+    if len(set(all_players)) != 4:
+        raise HTTPException(status_code=400, detail="Los 4 jugadores deben ser distintos")
+
+    if data.winning_team not in ("A", "B"):
+        raise HTTPException(status_code=400, detail="winning_team debe ser A o B")
+
+    if not data.score.strip():
+        raise HTTPException(status_code=400, detail="Debes ingresar el resultado")
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, data.session_token)
+
+            if player["id"] not in all_players:
+                raise HTTPException(
+                    status_code=403,
+                    detail="El jugador autenticado debe participar en el partido",
+                )
+
+            cur.execute(
+                """
+                SELECT id
+                FROM clubs
+                WHERE id = %s;
+                """,
+                (data.club_id,),
+            )
+
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Club no encontrado")
+
+            cur.execute(
+                """
+                INSERT INTO matches
+                    (club_id, event_id, match_type, status, created_by, played_at, category)
+                VALUES
+                    (%s, NULL, 'match', 'pending_confirmation', %s, COALESCE(%s::timestamp, NOW()), %s)
+                RETURNING *;
+                """,
+                (
+                    data.club_id,
+                    player["id"],
+                    data.played_at,
+                    data.category,
+                ),
+            )
+
+            match = cur.fetchone()
+            match_id = match["id"]
+
+            for pid in data.team_a_player_ids:
+                ensure_player_rating(cur, pid)
+                cur.execute(
+                    """
+                    INSERT INTO match_players (match_id, player_id, team)
+                    VALUES (%s, %s, 'A');
+                    """,
+                    (match_id, pid),
+                )
+
+            for pid in data.team_b_player_ids:
+                ensure_player_rating(cur, pid)
+                cur.execute(
+                    """
+                    INSERT INTO match_players (match_id, player_id, team)
+                    VALUES (%s, %s, 'B');
+                    """,
+                    (match_id, pid),
+                )
+
+            cur.execute(
+                """
+                INSERT INTO match_results (match_id, score, winning_team)
+                VALUES (%s, %s, %s);
+                """,
+                (match_id, data.score, data.winning_team),
+            )
+
+            cur.execute(
+                """
+                INSERT INTO match_confirmations (match_id, player_id, confirmed)
+                VALUES (%s, %s, TRUE)
+                ON CONFLICT DO NOTHING;
+                """,
+                (match_id, player["id"]),
+            )
+
+            conn.commit()
+
+            return {
+                "message": "Partido creado. Comparte el link o QR para validación.",
+                "match": match,
+                "validation_path": f"confirm-match.html?id={match_id}",
+            }
+
+@app.get("/player/matches/{match_id}/public")
+def player_match_public_detail(match_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    m.id,
+                    m.status,
+                    m.played_at,
+                    m.category,
+                    m.match_type,
+                    c.name AS club_name,
+                    mr.score,
+                    mr.winning_team,
+                    ARRAY_AGG(
+                        JSON_BUILD_OBJECT(
+                            'player_id', p.id,
+                            'name', p.name,
+                            'team', mp.team
+                        )
+                    ) AS players
+                FROM matches m
+                JOIN match_players mp
+                    ON mp.match_id = m.id
+                JOIN players p
+                    ON p.id = mp.player_id
+                LEFT JOIN match_results mr
+                    ON mr.match_id = m.id
+                LEFT JOIN clubs c
+                    ON c.id = m.club_id
+                WHERE m.id = %s
+                GROUP BY
+                    m.id,
+                    m.status,
+                    m.played_at,
+                    m.category,
+                    m.match_type,
+                    c.name,
+                    mr.score,
+                    mr.winning_team;
+                """,
+                (match_id,),
+            )
+
+            match = cur.fetchone()
+
+            if not match:
+                raise HTTPException(status_code=404, detail="Partido no encontrado")
+
+            return match
+
+@app.post("/player/matches/{match_id}/confirm")
+def player_confirm_match(match_id: int, data: PlayerMatchConfirm):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, data.session_token)
+
+            cur.execute(
+                """
+                SELECT team
+                FROM match_players
+                WHERE match_id = %s
+                  AND player_id = %s;
+                """,
+                (match_id, player["id"]),
+            )
+
+            membership = cur.fetchone()
+
+            if not membership:
+                raise HTTPException(status_code=403, detail="No perteneces a este partido")
+
+            cur.execute(
+                """
+                INSERT INTO match_confirmations (match_id, player_id, confirmed)
+                VALUES (%s, %s, TRUE)
+                ON CONFLICT DO NOTHING;
+                """,
+                (match_id, player["id"]),
+            )
+
+            cur.execute(
+                """
+                SELECT mp.team, COUNT(mc.id) AS confirmations
+                FROM match_players mp
+                LEFT JOIN match_confirmations mc
+                    ON mc.match_id = mp.match_id
+                   AND mc.player_id = mp.player_id
+                   AND mc.confirmed = TRUE
+                WHERE mp.match_id = %s
+                GROUP BY mp.team;
+                """,
+                (match_id,),
+            )
+
+            team_confirmations = cur.fetchall()
+            confirmed_teams = [r for r in team_confirmations if r["confirmations"] > 0]
+
+            auto_approved = False
+
+            if len(confirmed_teams) == 2:
+                cur.execute(
+                    """
+                    SELECT status, rating_processed
+                    FROM matches
+                    WHERE id = %s;
+                    """,
+                    (match_id,),
+                )
+                match = cur.fetchone()
+
+                if match and not match["rating_processed"]:
+                    cur.execute(
+                        """
+                        UPDATE matches
+                        SET status = 'approved'
+                        WHERE id = %s;
+                        """,
+                        (match_id,),
+                    )
+
+                    update_ratings_for_match(cur, match_id)
+
+                    cur.execute(
+                        """
+                        UPDATE matches
+                        SET rating_processed = TRUE
+                        WHERE id = %s;
+                        """,
+                        (match_id,),
+                    )
+
+                    auto_approved = True
+
+            conn.commit()
+
+            return {
+                "message": "Partido confirmado",
+                "auto_approved": auto_approved,
+            }
+
+@app.post("/player/matches/{match_id}/dispute")
+def player_dispute_match(match_id: int, data: PlayerMatchConfirm):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, data.session_token)
+
+            cur.execute(
+                """
+                SELECT id
+                FROM match_players
+                WHERE match_id = %s
+                  AND player_id = %s;
+                """,
+                (match_id, player["id"]),
+            )
+
+            if not cur.fetchone():
+                raise HTTPException(status_code=403, detail="No perteneces a este partido")
+
+            cur.execute(
+                """
+                UPDATE matches
+                SET status = 'disputed'
+                WHERE id = %s;
+                """,
+                (match_id,),
+            )
+
+            conn.commit()
+
+            return {"message": "Partido marcado como disputado. El club deberá revisarlo."}
