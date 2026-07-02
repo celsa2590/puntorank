@@ -4333,21 +4333,23 @@ def player_dashboard(token: str):
 
             cur.execute(
                 """
-                SELECT DISTINCT
+                SELECT
                     ls.id,
                     ls.name,
                     ls.category,
                     ls.gender,
                     ls.status,
-                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name
-                FROM league_pairs lp
-                JOIN league_seasons ls
-                    ON ls.id = lp.league_id
-                JOIN players p1
-                    ON p1.id = lp.player_1_id
-                JOIN players p2
-                    ON p2.id = lp.player_2_id
+                    ls.created_at
+                FROM league_seasons ls
+                JOIN league_pairs lp ON lp.league_id = ls.id
                 WHERE %s IN (lp.player_1_id, lp.player_2_id)
+                GROUP BY
+                    ls.id,
+                    ls.name,
+                    ls.category,
+                    ls.gender,
+                    ls.status,
+                    ls.created_at
                 ORDER BY ls.created_at DESC;
                 """,
                 (player_id,),
@@ -4356,22 +4358,23 @@ def player_dashboard(token: str):
 
             cur.execute(
                 """
-                SELECT DISTINCT
+                SELECT
                     te.id,
                     te.name,
                     te.category,
                     te.gender,
                     te.status,
-                    COALESCE(tp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
-                    tp.payment_status
-                FROM tournament_pairs tp
-                JOIN tournament_events te
-                    ON te.id = tp.tournament_id
-                JOIN players p1
-                    ON p1.id = tp.player_1_id
-                JOIN players p2
-                    ON p2.id = tp.player_2_id
+                    te.created_at
+                FROM tournament_events te
+                JOIN tournament_pairs tp ON tp.tournament_id = te.id
                 WHERE %s IN (tp.player_1_id, tp.player_2_id)
+                GROUP BY
+                    te.id,
+                    te.name,
+                    te.category,
+                    te.gender,
+                    te.status,
+                    te.created_at
                 ORDER BY te.created_at DESC;
                 """,
                 (player_id,),
