@@ -277,3 +277,20 @@ canvas { margin-top: 12px; max-height: 280px; }
   font-weight: 800;
   cursor: pointer;
 }
+.top-nav {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.nav-icon {
+  background: white;
+  border: 1px solid #dfe6df;
+  color: #111827;
+  padding: 10px 14px;
+  border-radius: 14px;
+  text-decoration: none;
+  font-weight: 800;
+  cursor: pointer;
+}
