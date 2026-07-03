@@ -22,7 +22,8 @@ app.add_middleware(
         "http://127.0.0.1:8080",
         "https://puntorank-frontend.onrender.com",
         "https://puntorank-backend.onrender.com",
-        "https://puntorank.cl"
+        "https://puntorank.cl",
+        "https://www.puntorank.cl",
     ],
     allow_credentials=True,
     allow_methods=["*"],

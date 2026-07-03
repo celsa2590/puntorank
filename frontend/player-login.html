@@ -7,8 +7,12 @@
   <style>.auth-shell{max-width:480px;margin:0 auto;}</style>
 </head>
 <body>
+<div class="top-nav">
+  <a class="nav-icon" href="index.html">🏠 Inicio</a>
+  <button class="nav-icon" onclick="history.back()">← Volver</button>
+</div>
+
 <div class="auth-shell">
-  <a class="btn secondary" href="index.html">← Volver</a>
   <div class="brand" style="margin-top:24px;">Iniciar sesión</div>
   <div class="subtitle">Accede a tu cuenta para registrar partidos y ver tu evolución.</div>
 
@@ -38,32 +42,37 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
   const message = document.getElementById("message");
   message.innerHTML = "Ingresando...";
 
-  const response = await fetch(`${API_URL}/player/login`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      email: document.getElementById("email").value.trim().toLowerCase(),
-      password: document.getElementById("password").value
-    })
-  });
+  try {
+    const response = await fetch(`${API_URL}/player/login`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        email: document.getElementById("email").value.trim().toLowerCase(),
+        password: document.getElementById("password").value
+      })
+    });
 
-  const result = await response.json();
+    const result = await response.json();
 
-  if (!response.ok) {
-    message.innerHTML = `❌ ${result.detail || "No se pudo ingresar"}`;
-    return;
-  }
+    if (!response.ok) {
+      message.innerHTML = `❌ ${result.detail || "No se pudo ingresar"}`;
+      return;
+    }
 
-  localStorage.setItem("player_token", result.session.token);
-  localStorage.setItem("player_id", result.player.id);
-  localStorage.setItem("player_name", result.player.name);
+    localStorage.setItem("player_token", result.session.token);
+    localStorage.setItem("player_id", result.player.id);
+    localStorage.setItem("player_name", result.player.name);
 
-  const redirect = localStorage.getItem("after_login_redirect");
-  if (redirect) {
-    localStorage.removeItem("after_login_redirect");
-    window.location.href = redirect;
-  } else {
-    window.location.href = "player-dashboard.html";
+    const redirect = localStorage.getItem("after_login_redirect");
+    if (redirect) {
+      localStorage.removeItem("after_login_redirect");
+      window.location.href = redirect;
+    } else {
+      window.location.href = "player-dashboard.html";
+    }
+  } catch (error) {
+    console.error(error);
+    message.innerHTML = "❌ No se pudo conectar con PuntoRank. Intenta nuevamente.";
   }
 });
 </script>
