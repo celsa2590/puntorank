@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from services.email_service import send_email
 
 load_dotenv()
 
@@ -490,6 +491,22 @@ def get_or_create_player(cur, player_data, club_id: int):
 def root():
     return {"message": "PuntoRank API funcionando"}
 
+@app.get("/email/test")
+def test_email(to: str):
+    result = send_email(
+        to_email=to,
+        subject="Prueba PuntoRank",
+        html="""
+        <h1>PuntoRank</h1>
+        <p>Correo de prueba funcionando ✅</p>
+        """,
+        text="Correo de prueba funcionando"
+    )
+
+    return {
+        "message": "Correo enviado",
+        "result": result
+    }
 
 @app.get("/clubs")
 def get_clubs():
