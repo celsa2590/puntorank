@@ -450,6 +450,17 @@ class TournamentMatchResult(BaseModel):
 class TournamentGeneratePlayoff(BaseModel):
     qualifiers_per_group: int = 2
 
+class PlayerForgotPassword(BaseModel):
+    email: str
+
+
+class PlayerResetPassword(BaseModel):
+    token: str
+    new_password: str
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
         ensure_player_rating(cur, player_data.player_id)
@@ -4273,6 +4284,115 @@ def player_account_login(data: PlayerAccountLogin):
                 "player": safe_player,
                 "session": session,
             }
+
+
+@app.post("/player/forgot-password")
+def player_forgot_password(data: PlayerForgotPassword):
+    email = data.email.strip().lower()
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(minutes=30)
+
+    frontend_url = os.getenv("FRONTEND_URL", "https://puntorank-frontend.onrender.com")
+    reset_link = f"{frontend_url}/player-reset-password.html?token={token}"
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, email
+                FROM players
+                WHERE lower(email) = %s
+                LIMIT 1;
+                """,
+                (email,),
+            )
+
+            player = cur.fetchone()
+
+            if player:
+                cur.execute(
+                    """
+                    UPDATE players
+                    SET password_reset_token = %s,
+                        password_reset_expires_at = %s
+                    WHERE id = %s;
+                    """,
+                    (token, expires_at, player["id"]),
+                )
+
+                html = f"""
+                <div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px;">
+                  <h1 style="color:#111827;">PuntoRank</h1>
+                  <p>Hola {player["name"]},</p>
+                  <p>Recibimos una solicitud para restablecer tu contraseña.</p>
+                  <p>
+                    <a href="{reset_link}"
+                       style="display:inline-block;background:#5cad59;color:white;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:bold;">
+                      Restablecer contraseña
+                    </a>
+                  </p>
+                  <p>Este enlace vence en 30 minutos.</p>
+                  <p>Si no solicitaste este cambio, puedes ignorar este correo.</p>
+                </div>
+                """
+
+                send_email(
+                    to_email=player["email"],
+                    subject="Restablece tu contraseña de PuntoRank",
+                    html=html,
+                    text=f"Restablece tu contraseña aquí: {reset_link}",
+                )
+
+            conn.commit()
+
+    return {
+        "message": "Si el correo existe, enviaremos instrucciones para restablecer la contraseña."
+    }
+
+@app.post("/player/reset-password")
+def player_reset_password(data: PlayerResetPassword):
+    if len(data.new_password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="La contraseña debe tener al menos 6 caracteres",
+        )
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id
+                FROM players
+                WHERE password_reset_token = %s
+                  AND password_reset_expires_at > NOW()
+                LIMIT 1;
+                """,
+                (data.token,),
+            )
+
+            player = cur.fetchone()
+
+            if not player:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Token inválido o expirado",
+                )
+
+            cur.execute(
+                """
+                UPDATE players
+                SET password_hash = %s,
+                    password_reset_token = NULL,
+                    password_reset_expires_at = NULL
+                WHERE id = %s;
+                """,
+                (hash_password(data.new_password), player["id"]),
+            )
+
+            conn.commit()
+
+    return {"message": "Contraseña actualizada correctamente"}
+
 
 @app.post("/player/logout")
 def player_logout(data: PlayerSessionRequest):
