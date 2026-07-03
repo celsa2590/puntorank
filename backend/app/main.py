@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from services.email_service import send_email
+from app.services.email_service import send_email
 
 load_dotenv()
 
