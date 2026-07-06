@@ -46,8 +46,8 @@ const API_URL = "https://puntorank-backend.onrender.com";
 
 async function loadTopFive() {
   try {
-    const femenino = await fetch(`${API_URL}/ranking?club_id=1&gender=femenino`);
-    const masculino = await fetch(`${API_URL}/ranking?club_id=1&gender=masculino`);
+    const femenino = await fetch(`${API_URL}/ranking?&gender=femenino`);
+    const masculino = await fetch(`${API_URL}/ranking?&gender=masculino`);
 
     const dataF = await femenino.json();
     const dataM = await masculino.json();
