@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.email_service import send_email
+from app.database import get_conn
 
 load_dotenv()
 
@@ -29,12 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-def get_conn():
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL no está configurada")
-    return psycopg2.connect(database_url, cursor_factory=RealDictCursor)
 
 def get_match_weight(match_type: str) -> float:
     weights = {
