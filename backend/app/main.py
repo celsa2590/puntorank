@@ -20,6 +20,14 @@ from app.services.rating_service import (
     apply_rating_bonus,
     get_rating_multiplier,
 )
+from app.services.auth_service import hash_password, generate_token
+from app.services.auth_service import (
+    hash_password,
+    verify_password,
+    hash_session_token,
+    generate_token,
+)
+from app.config import FRONTEND_URL, PASSWORD_RESET_MINUTES
 
 load_dotenv()
 
@@ -41,8 +49,6 @@ app.add_middleware(
 )
 
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -3606,33 +3612,8 @@ def get_tournament_summary(tournament_id: int):
 
 PLAYER_SESSION_DAYS = 30
 
-def hash_password(password: str) -> str:
-    salt = secrets.token_hex(16)
-    digest = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        120000,
-    ).hex()
-    return f"{salt}${digest}"
-
-def verify_password(password: str, stored_hash: str | None) -> bool:
-    if not stored_hash or "$" not in stored_hash:
-        return False
-    salt, digest = stored_hash.split("$", 1)
-    candidate = hashlib.pbkdf2_hmac(
-        "sha256",
-        password.encode("utf-8"),
-        salt.encode("utf-8"),
-        120000,
-    ).hex()
-    return secrets.compare_digest(candidate, digest)
-
-def hash_session_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
 def create_player_session(cur, player_id: int):
-    raw_token = secrets.token_urlsafe(32)
+    raw_token = generate_token()
     token_hash = hash_session_token(raw_token)
 
     cur.execute(
@@ -3867,10 +3848,9 @@ def player_account_login(data: PlayerAccountLogin):
 @app.post("/player/forgot-password")
 def player_forgot_password(data: PlayerForgotPassword):
     email = data.email.strip().lower()
-    token = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(minutes=30)
-
-    frontend_url = os.getenv("FRONTEND_URL", "https://puntorank-frontend.onrender.com")
+    token = generate_token()
+    expires_at = datetime.utcnow() + timedelta(minutes=PASSWORD_RESET_MINUTES)
+    frontend_url = FRONTEND_URL
     reset_link = f"{frontend_url}/player-reset-password.html?token={token}"
 
     with get_conn() as conn:
