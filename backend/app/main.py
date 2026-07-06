@@ -901,6 +901,7 @@ def get_player_profile(player_id: int):
                     p.id,
                     p.name,
                     p.side,
+                    p.category,
                     p.is_registered,
                     ROUND(pr.rating, 2) AS rating,
                     pr.matches_count,
@@ -918,7 +919,7 @@ def get_player_profile(player_id: int):
                 LEFT JOIN player_clubs pc ON pc.player_id = p.id
                 LEFT JOIN clubs c ON c.id = pc.club_id
                 WHERE p.id = %s
-                GROUP BY p.id, p.name, p.side, p.is_registered, pr.rating, pr.matches_count;
+                GROUP BY p.id, p.name, p.side, p.category, p.is_registered, pr.rating, pr.matches_count;
                 """,
                 (player_id,),
             )

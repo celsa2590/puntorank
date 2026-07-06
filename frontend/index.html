@@ -81,7 +81,7 @@ function renderTop(players, containerId) {
     card.onclick = () => goToProfile(player.player_id);
 
     card.innerHTML = `
-      <div class="position">${index + 1}</div>
+      <div class="position">${["🥇", "🥈", "🥉"][index] || index + 1}</div>
       <div>
         <div class="name">${index === 0 ? "👑 " : ""}${player.player_name}</div>
         <div class="club">${player.club_name || "Club no asignado"}</div>

@@ -113,6 +113,7 @@ async function loadProfile() {
           <div class="profile-name">${player.name}</div>
           <div class="profile-meta">Lado: ${side}</div>
           <div class="profile-meta">Clubes: ${clubs || "Sin club"}</div>
+          <div class="profile-meta">Categoría: ${player.category || "Sin categoría"}</div>
         </div>
         <div class="profile-rating">
           <div class="value">${Number(player.rating || 1000).toFixed(2)}</div>
