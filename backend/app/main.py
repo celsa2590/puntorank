@@ -18,6 +18,7 @@ from app.services.rating_service import (
     update_ratings_for_match,
     update_rating_pair_vs_pair,
     apply_rating_bonus,
+    get_rating_multiplier,
 )
 
 load_dotenv()
@@ -1344,7 +1345,7 @@ def finish_americano(americano_id: int):
                     match_id=None,
                     source_type="americano_match",
                     source_id=match["id"],
-                    multiplier=1.2,
+                    multiplier=get_rating_multiplier("americano_match")
                 )
 
 # Bonus de podio del americano
@@ -2094,7 +2095,7 @@ def finish_league(league_id: int):
                     match_id=None,
                     source_type="league_match",
                     source_id=match["id"],
-                    multiplier=1.5,
+                    multiplier=get_rating_multiplier("league_match")
                 )
 
                 cur.execute(
@@ -2440,13 +2441,6 @@ def parse_padel_score(score: str):
 
     return sets_a, sets_b, games_a, games_b
 
-
-def get_tournament_match_multiplier(phase: str | None, bracket_round: str | None) -> float:
-    if phase == "playoff" and bracket_round == "final":
-        return 2.0
-    if phase == "playoff":
-        return 1.8
-    return 1.5
 
 
 @app.post("/tournament_events")
@@ -3420,9 +3414,10 @@ def finish_tournament(tournament_id: int):
                     continue
 
                 winner = "A" if match["winner_pair_id"] == match["pair_a_id"] else "B"
-                multiplier = get_tournament_match_multiplier(
+                multiplier = get_rating_multiplier(
+                    "tournament_match",
                     match["phase"],
-                    match["bracket_round"],
+                    match["bracket_round"]
                 )
 
                 update_rating_pair_vs_pair(

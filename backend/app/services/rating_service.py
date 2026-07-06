@@ -1,5 +1,28 @@
 from fastapi import HTTPException
 
+RATING_MULTIPLIERS = {
+    "tournament_final": 2.0,
+    "tournament_playoff": 1.8,
+    "tournament_group": 1.6,
+    "league_match": 1.4,
+    "standard": 1.0,
+    "match": 1.0,
+    "cuadrangular": 0.8,
+    "hexagonal": 0.7,
+    "americano_match": 0.5,
+    "americano_short": 0.5,
+}
+
+
+def get_rating_multiplier(source_type: str, phase: str | None = None, bracket_round: str | None = None) -> float:
+    if source_type == "tournament_match":
+        if phase == "playoff" and bracket_round == "final":
+            return RATING_MULTIPLIERS["tournament_final"]
+        if phase == "playoff":
+            return RATING_MULTIPLIERS["tournament_playoff"]
+        return RATING_MULTIPLIERS["tournament_group"]
+
+    return RATING_MULTIPLIERS.get(source_type, 1.0)
 
 def get_match_weight(match_type: str) -> float:
     weights = {
