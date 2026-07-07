@@ -36,6 +36,8 @@ from app.services.match_service import (
     notify_friendly_match_players,
     requires_confirmation,
 )
+from app.services.auth_service import hash_session_token
+from app.routers.matches import router as matches_router
 
 load_dotenv()
 
@@ -56,7 +58,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+app.include_router(matches_router)
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -4428,3 +4430,5 @@ def player_dispute_match(match_id: int, data: PlayerMatchConfirm):
             conn.commit()
 
             return {"message": "Partido marcado como disputado. El club deberá revisarlo."}
+
+k
