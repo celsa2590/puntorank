@@ -27,6 +27,10 @@ from app.services.auth_service import (
     generate_token,
 )
 from app.config import FRONTEND_URL, PASSWORD_RESET_MINUTES
+from app.services.notification_service import (
+    notify_password_reset,
+)
+from app.services.notification_service import notify_password_reset
 
 load_dotenv()
 
@@ -3893,11 +3897,9 @@ def player_forgot_password(data: PlayerForgotPassword):
                 </div>
                 """
 
-                send_email(
-                    to_email=player["email"],
-                    subject="Restablece tu contraseña de PuntoRank",
-                    html=html,
-                    text=f"Restablece tu contraseña aquí: {reset_link}",
+                notify_password_reset(
+                    email=player["email"],
+                    token=raw_token,
                 )
 
             conn.commit()
