@@ -121,15 +121,14 @@ async function createMatch() {
   }
 
   const url = `${window.location.origin}/${result.validation_path}`;
-  document.getElementById("message").innerHTML = "✅ Partido creado. Compártelo para validación.";
-  document.getElementById("shareBox").innerHTML = `
-    <div class="share-box">
-      <strong>Link de validación</strong><br>
-      <a href="${url}">${url}</a><br><br>
-      <button onclick="navigator.clipboard.writeText('${url}')">Copiar link</button>
-      <div class="meta" style="margin-top:10px;">En el siguiente paso agregamos QR visual. Por ahora este link cumple el mismo flujo.</div>
+  document.getElementById("message").innerHTML = `
+    <div class="success">
+        ✅ Partido creado correctamente.
+        <br><br>
+        Se enviarán correos electrónicos a los demás jugadores para confirmar el resultado.
     </div>
   `;
+
 }
 
 init();
