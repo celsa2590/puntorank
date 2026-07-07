@@ -31,6 +31,11 @@ from app.services.notification_service import (
     notify_password_reset,
 )
 from app.services.notification_service import notify_password_reset
+from app.services.match_service import (
+    register_match_metadata,
+    notify_friendly_match_players,
+    requires_confirmation,
+)
 
 load_dotenv()
 
@@ -250,6 +255,24 @@ def report_match(match: MatchReport):
                 """,
                 (match_id, match.score, match.winning_team),
             )
+
+            created_by_player_id = match.created_by
+
+            register_match_metadata(
+                cur=cur,
+                match_id=match_id,
+                created_by_player_id=created_by_player_id,
+                match_source="friendly",
+            )
+
+            emails_sent = 0
+
+            if requires_confirmation("friendly"):
+                emails_sent = notify_friendly_match_players(
+                    cur=cur,
+                    match_id=match_id,
+                    created_by_player_id=created_by_player_id,
+                )
 
             conn.commit()
 
