@@ -4,46 +4,74 @@
   <meta charset="UTF-8">
   <title>PuntoRank - Validar partido</title>
   <link rel="stylesheet" href="theme.css">
-  <style>.confirm-shell{max-width:640px;margin:0 auto;}</style>
+  <style>
+    .confirm-shell { max-width: 640px; margin: 0 auto; }
+  </style>
 </head>
+
 <body>
 <div class="confirm-shell">
   <a class="btn secondary" href="index.html">← Inicio</a>
+
   <div class="brand" style="margin-top:24px;">Validar partido</div>
   <div class="subtitle">Confirma el resultado o márcalo como disputa.</div>
 
   <div class="card">
     <div id="matchBox">Cargando partido...</div>
+
     <div class="section-actions" style="margin-top:16px;">
       <button onclick="confirmMatch()">Confirmar resultado</button>
       <button class="secondary" onclick="disputeMatch()">Disputar</button>
     </div>
-    <div id="message" class="meta"></div>
+
+    <div id="message" class="meta" style="margin-top:14px;"></div>
   </div>
 </div>
 
 <script>
 const API_URL = "https://puntorank-backend.onrender.com";
-const token = localStorage.getItem("player_token");
-const params = new URLSearchParams(window.location.search);
-const matchId = params.get("id");
 
-if (!token) {
+const sessionToken = localStorage.getItem("player_token");
+const params = new URLSearchParams(window.location.search);
+const confirmationToken = params.get("token");
+
+if (!confirmationToken) {
+  document.getElementById("matchBox").innerHTML = "El enlace no es válido.";
+} else if (!sessionToken) {
   localStorage.setItem("after_login_redirect", window.location.href);
   window.location.href = "player-login.html";
 }
 
 async function loadMatch() {
-  const response = await fetch(`${API_URL}/player/matches/${matchId}/public`);
+  if (!confirmationToken || !sessionToken) return;
+
+  const response = await fetch(`${API_URL}/player/matches/confirmation-preview`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      session_token: sessionToken,
+      confirmation_token: confirmationToken
+    })
+  });
+
   const match = await response.json();
 
   if (!response.ok) {
-    document.getElementById("matchBox").innerHTML = "Partido no encontrado.";
+    document.getElementById("matchBox").innerHTML =
+      match.detail || "Partido no encontrado o enlace inválido.";
     return;
   }
 
-  const teamA = match.players.filter(p => p.team === "A").map(p => p.name).join(" / ");
-  const teamB = match.players.filter(p => p.team === "B").map(p => p.name).join(" / ");
+  const teamA = match.players
+    .filter(p => p.team === "A")
+    .map(p => p.name)
+    .join(" / ");
+
+  const teamB = match.players
+    .filter(p => p.team === "B")
+    .map(p => p.name)
+    .join(" / ");
+
   const winner = match.winning_team === "A" ? teamA : teamB;
 
   document.getElementById("matchBox").innerHTML = `
@@ -51,46 +79,59 @@ async function loadMatch() {
     <div class="meta">
       Club: ${match.club_name || "-"}<br>
       Resultado: ${match.score || "-"}<br>
-      Ganador reportado: ${winner}<br>
-      Estado: ${match.status}
+      Ganador reportado: ${winner || "-"}<br>
+      Estado: ${match.status || "-"}
     </div>
   `;
 }
 
 async function confirmMatch() {
-  const response = await fetch(`${API_URL}/player/matches/${matchId}/confirm`, {
+  const response = await fetch(`${API_URL}/player/matches/confirm`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({session_token: token})
+    body: JSON.stringify({
+      session_token: sessionToken,
+      confirmation_token: confirmationToken
+    })
   });
 
   const result = await response.json();
 
   if (!response.ok) {
-    document.getElementById("message").innerHTML = `❌ ${result.detail || "No se pudo confirmar"}`;
+    document.getElementById("message").innerHTML =
+      `❌ ${result.detail || "No se pudo confirmar"}`;
     return;
   }
 
   document.getElementById("message").innerHTML =
-    result.auto_approved ? "✅ Partido confirmado y aprobado automáticamente." : "✅ Confirmación registrada.";
+    result.auto_approved
+      ? "✅ Partido confirmado y aprobado automáticamente."
+      : "✅ Confirmación registrada.";
+
   await loadMatch();
 }
 
 async function disputeMatch() {
-  const response = await fetch(`${API_URL}/player/matches/${matchId}/dispute`, {
+  const response = await fetch(`${API_URL}/player/matches/dispute`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({session_token: token})
+    body: JSON.stringify({
+      session_token: sessionToken,
+      confirmation_token: confirmationToken
+    })
   });
 
   const result = await response.json();
 
   if (!response.ok) {
-    document.getElementById("message").innerHTML = `❌ ${result.detail || "No se pudo disputar"}`;
+    document.getElementById("message").innerHTML =
+      `❌ ${result.detail || "No se pudo disputar"}`;
     return;
   }
 
-  document.getElementById("message").innerHTML = "⚠️ Partido marcado como disputado. El club deberá revisarlo.";
+  document.getElementById("message").innerHTML =
+    "⚠️ Partido marcado como disputado. El club deberá revisarlo.";
+
   await loadMatch();
 }
 
