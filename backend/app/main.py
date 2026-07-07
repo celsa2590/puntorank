@@ -20,7 +20,6 @@ from app.services.rating_service import (
     apply_rating_bonus,
     get_rating_multiplier,
 )
-from app.services.auth_service import hash_password, generate_token
 from app.services.auth_service import (
     hash_password,
     verify_password,
