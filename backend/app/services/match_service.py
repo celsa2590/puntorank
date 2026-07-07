@@ -122,13 +122,16 @@ def notify_friendly_match_players(cur, match_id: int, created_by_player_id: int 
             ),
         )
 
-        notify_match_confirmation(
-            email=player["email"],
-            confirmation_token=raw_token,
-            match_summary=summary,
-        )
+        try:
+            notify_match_confirmation(
+                email=player["email"],
+                confirmation_token=raw_token,
+                match_summary=summary,
+            )
+            sent += 1
+        except Exception as e:
+            print(f"Error enviando correo de confirmación a {player['email']}: {e}")
 
-        sent += 1
 
     return sent
 
