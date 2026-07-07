@@ -98,16 +98,23 @@ async function createMatch() {
   }
 
   const payload = {
-    session_token: token,
     club_id: parseInt(document.getElementById("clubSelect").value),
-    team_a_player_ids: [ids[0], ids[1]],
-    team_b_player_ids: [ids[2], ids[3]],
+    event_id: null,
+    match_type: "standard",
+    created_by: me.id,
+    played_at: null,
+    category: document.getElementById("category").value || null,
     score: document.getElementById("score").value.trim(),
     winning_team: document.getElementById("winner").value,
-    category: document.getElementById("category").value || null
+    players: [
+      { player_id: ids[0], name: null, team: "A", side: null },
+      { player_id: ids[1], name: null, team: "A", side: null },
+      { player_id: ids[2], name: null, team: "B", side: null },
+      { player_id: ids[3], name: null, team: "B", side: null }
+    ]
   };
 
-  const response = await fetch(`${API_URL}/player/matches/report`, {
+  const response = await fetch(`${API_URL}/matches/report`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(payload)
