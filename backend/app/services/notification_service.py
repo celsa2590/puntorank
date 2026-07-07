@@ -15,8 +15,8 @@ def notify_password_reset(email: str, token: str):
         text=f"Restablece tu contraseña aquí: {reset_url}",
     )
 
-def notify_match_confirmation(email: str, match_id: int, player_id: int, match_summary: str):
-    confirm_url = f"{FRONTEND_URL}/confirm-match.html?match_id={match_id}&player_id={player_id}"
+def notify_match_confirmation(email: str, confirmation_token: str, match_summary: str):
+    confirm_url = f"{FRONTEND_URL}/confirm-match.html?token={confirmation_token}"
 
     html = match_confirmation_template(
         match_summary=match_summary,

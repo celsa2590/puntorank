@@ -3,6 +3,7 @@ from fastapi import HTTPException
 
 from app.config import MATCH_CONFIRMATION_HOURS
 from app.services.notification_service import notify_match_confirmation
+from app.services.auth_service import generate_token, hash_session_token
 
 MATCH_SOURCE_RULES = {
     "friendly": {
@@ -98,10 +99,32 @@ def notify_friendly_match_players(cur, match_id: int, created_by_player_id: int 
         if not player["email"]:
             continue
 
+        raw_token = generate_token()
+        token_hash = hash_session_token(raw_token)
+
+        cur.execute(
+            """
+            INSERT INTO match_confirmation_tokens
+                (match_id, player_id, token_hash, expires_at)
+            VALUES
+                (%s, %s, %s, NOW() + (%s || ' hours')::interval)
+            ON CONFLICT (match_id, player_id)
+            DO UPDATE SET token_hash = EXCLUDED.token_hash,
+                          expires_at = EXCLUDED.expires_at,
+                          used_at = NULL,
+                          created_at = NOW();
+            """,
+            (
+                match_id,
+                player["player_id"],
+                token_hash,
+                MATCH_CONFIRMATION_HOURS,
+            ),
+        )
+
         notify_match_confirmation(
             email=player["email"],
-            match_id=match_id,
-            player_id=player["player_id"],
+            confirmation_token=raw_token,
             match_summary=summary,
         )
 
