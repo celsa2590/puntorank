@@ -56,7 +56,7 @@ def notify_friendly_match_players(cur, match_id: int, created_by_player_id: int 
         """
         SELECT
             m.id,
-            m.score,
+            mr.score,
             mr.winning_team,
             c.name AS club_name
         FROM matches m
