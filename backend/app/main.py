@@ -4431,4 +4431,3 @@ def player_dispute_match(match_id: int, data: PlayerMatchConfirm):
 
             return {"message": "Partido marcado como disputado. El club deberá revisarlo."}
 
-k
