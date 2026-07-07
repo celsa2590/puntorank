@@ -117,3 +117,9 @@ class PlayerForgotPassword(BaseModel):
 class PlayerResetPassword(BaseModel):
     token: str
     new_password: str
+class MatchConfirmationTokenRequest(BaseModel):
+    session_token: str
+    confirmation_token: str
+class MatchConfirmationTokenRequest(BaseModel):
+    session_token: str
+    confirmation_token: str
