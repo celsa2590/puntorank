@@ -108,7 +108,14 @@ async function confirmMatch() {
       ? "✅ Partido confirmado y aprobado automáticamente."
       : "✅ Confirmación registrada.";
 
-  await loadMatch();
+  document.querySelector(".section-actions").style.display = "none";
+  document.getElementById("matchBox").innerHTML = `
+    <h2>Resultado confirmado</h2>
+    <div class="meta">
+      Gracias por validar el partido. Tu confirmación fue registrada correctamente.
+    </div>
+  `;
+
 }
 
 async function disputeMatch() {
