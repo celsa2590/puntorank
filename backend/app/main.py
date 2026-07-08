@@ -2067,6 +2067,135 @@ def get_league_standings(league_id: int):
 
             return cur.fetchall()
 
+@app.get("/public/leagues/{league_id}")
+def get_public_league_profile(league_id: int):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT
+                    ls.id,
+                    ls.name,
+                    ls.category,
+                    ls.gender,
+                    ls.format,
+                    ls.status,
+                    ls.start_date,
+                    ls.end_date,
+                    c.name AS club_name
+                FROM league_seasons ls
+                LEFT JOIN clubs c ON c.id = ls.club_id
+                WHERE ls.id = %s;
+                """,
+                (league_id,),
+            )
+            league = cur.fetchone()
+
+            if not league:
+                raise HTTPException(status_code=404, detail="Liga no encontrada")
+
+            cur.execute(
+                """
+                SELECT
+                    lp.id AS pair_id,
+                    COALESCE(lp.group_name, 'Grupo único') AS group_name,
+                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+                    p1.name AS player_1_name,
+                    p2.name AS player_2_name
+                FROM league_pairs lp
+                JOIN players p1 ON p1.id = lp.player_1_id
+                JOIN players p2 ON p2.id = lp.player_2_id
+                WHERE lp.league_id = %s
+                ORDER BY COALESCE(lp.group_name, 'Grupo único'), pair_name;
+                """,
+                (league_id,),
+            )
+            pairs = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(lp.group_name, 'Grupo único') AS group_name,
+                    lp.id AS pair_id,
+                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+
+                    COUNT(lm.id) FILTER (WHERE lm.status = 'completed') AS played,
+                    COUNT(lm.id) FILTER (WHERE lm.winner_pair_id = lp.id) AS wins,
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                          AND lm.winner_pair_id IS NOT NULL
+                          AND lm.winner_pair_id <> lp.id
+                    ) AS losses,
+                    COALESCE(SUM(CASE WHEN lm.winner_pair_id = lp.id THEN 3 ELSE 0 END), 0) AS points
+                FROM league_pairs lp
+                JOIN players p1 ON p1.id = lp.player_1_id
+                JOIN players p2 ON p2.id = lp.player_2_id
+                LEFT JOIN league_matches lm
+                    ON lm.pair_a_id = lp.id
+                    OR lm.pair_b_id = lp.id
+                WHERE lp.league_id = %s
+                GROUP BY lp.id, lp.group_name, lp.pair_name, p1.name, p2.name
+                ORDER BY
+                    COALESCE(lp.group_name, 'Grupo único'),
+                    points DESC,
+                    wins DESC,
+                    pair_name ASC;
+                """,
+                (league_id,),
+            )
+            standings = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT
+                    lm.id,
+                    lm.round_number,
+                    lm.phase,
+                    lm.cup,
+                    lm.bracket_round,
+                    lm.scheduled_at,
+                    lm.court,
+                    lm.score,
+                    lm.status,
+                    lm.played_at,
+
+                    COALESCE(pa.group_name, 'Grupo único') AS group_name,
+
+                    pa.id AS pair_a_id,
+                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+
+                    pb.id AS pair_b_id,
+                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                    lm.winner_pair_id
+                FROM league_matches lm
+                JOIN league_pairs pa ON pa.id = lm.pair_a_id
+                JOIN players p1a ON p1a.id = pa.player_1_id
+                JOIN players p2a ON p2a.id = pa.player_2_id
+
+                JOIN league_pairs pb ON pb.id = lm.pair_b_id
+                JOIN players p1b ON p1b.id = pb.player_1_id
+                JOIN players p2b ON p2b.id = pb.player_2_id
+
+                WHERE lm.league_id = %s
+                ORDER BY
+                    COALESCE(pa.group_name, 'Grupo único'),
+                    lm.round_number,
+                    lm.scheduled_at NULLS LAST,
+                    lm.id;
+                """,
+                (league_id,),
+            )
+            matches = cur.fetchall()
+
+            return {
+                "league": league,
+                "pairs": pairs,
+                "standings": standings,
+                "matches": matches,
+            }
+
 @app.post("/leagues/{league_id}/finish")
 def finish_league(league_id: int):
 
