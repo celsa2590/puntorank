@@ -1720,26 +1720,28 @@ def get_club_leagues(club_id: int):
 
 @app.post("/leagues/{league_id}/generate-fixture")
 def generate_league_fixture(league_id: int):
-
     with get_conn() as conn:
         with conn.cursor() as cur:
 
             cur.execute(
                 """
-                SELECT id
+                SELECT
+                    COALESCE(group_name, 'Grupo único') AS group_name,
+                    ARRAY_AGG(id ORDER BY id) AS pair_ids
                 FROM league_pairs
                 WHERE league_id = %s
-                ORDER BY id;
+                GROUP BY COALESCE(group_name, 'Grupo único')
+                ORDER BY COALESCE(group_name, 'Grupo único');
                 """,
                 (league_id,),
             )
 
-            pairs = [r["id"] for r in cur.fetchall()]
+            groups = cur.fetchall()
 
-            if len(pairs) < 2:
+            if not groups:
                 raise HTTPException(
                     status_code=400,
-                    detail="Se necesitan al menos 2 parejas para generar fixture",
+                    detail="No hay parejas inscritas en esta liga",
                 )
 
             cur.execute(
@@ -1750,47 +1752,61 @@ def generate_league_fixture(league_id: int):
                 (league_id,),
             )
 
-            pairs_work = pairs.copy()
+            total_matches_created = 0
+            max_rounds_created = 0
 
-            if len(pairs_work) % 2 != 0:
-                pairs_work.append(None)
+            for group in groups:
+                group_name = group["group_name"]
+                pairs = group["pair_ids"]
 
-            n = len(pairs_work)
-            rounds_needed = n - 1
-            matches_per_round = n // 2
+                if len(pairs) < 2:
+                    continue
 
-            matches_created = 0
+                pairs_work = pairs.copy()
 
-            for round_number in range(1, rounds_needed + 1):
+                if len(pairs_work) % 2 != 0:
+                    pairs_work.append(None)
 
-                for i in range(matches_per_round):
+                n = len(pairs_work)
+                rounds_needed = n - 1
+                matches_per_round = n // 2
+                max_rounds_created = max(max_rounds_created, rounds_needed)
 
-                    pair_a = pairs_work[i]
-                    pair_b = pairs_work[n - 1 - i]
+                for round_number in range(1, rounds_needed + 1):
+                    for i in range(matches_per_round):
+                        pair_a = pairs_work[i]
+                        pair_b = pairs_work[n - 1 - i]
 
-                    if pair_a is not None and pair_b is not None:
-                        cur.execute(
-                            """
-                            INSERT INTO league_matches
-                                (league_id, round_number, pair_a_id, pair_b_id)
-                            VALUES
-                                (%s, %s, %s, %s);
-                            """,
-                            (
-                                league_id,
-                                round_number,
-                                pair_a,
-                                pair_b,
-                            ),
-                        )
+                        if pair_a is not None and pair_b is not None:
+                            cur.execute(
+                                """
+                                INSERT INTO league_matches
+                                    (
+                                        league_id,
+                                        round_number,
+                                        pair_a_id,
+                                        pair_b_id,
+                                        phase,
+                                        status
+                                    )
+                                VALUES
+                                    (%s, %s, %s, %s, 'regular', 'scheduled');
+                                """,
+                                (
+                                    league_id,
+                                    round_number,
+                                    pair_a,
+                                    pair_b,
+                                ),
+                            )
 
-                        matches_created += 1
+                            total_matches_created += 1
 
-                pairs_work = (
-                    [pairs_work[0]]
-                    + [pairs_work[-1]]
-                    + pairs_work[1:-1]
-                )
+                    pairs_work = (
+                        [pairs_work[0]]
+                        + [pairs_work[-1]]
+                        + pairs_work[1:-1]
+                    )
 
             cur.execute(
                 """
@@ -1804,9 +1820,10 @@ def generate_league_fixture(league_id: int):
             conn.commit()
 
             return {
-                "message": "Fixture generado",
-                "rounds_created": rounds_needed,
-                "matches_created": matches_created,
+                "message": "Fixture generado por grupos",
+                "groups": len(groups),
+                "rounds_created": max_rounds_created,
+                "matches_created": total_matches_created,
             }
 
 @app.get("/leagues/{league_id}/matches")
