@@ -2,7 +2,10 @@ import os
 import requests
 
 
-API_URL = "https://api.cloudflare.com/client/v4/accounts/{account_id}/email/v1"
+API_URL = (
+    f"https://api.cloudflare.com/client/v4/accounts/"
+    f"{ACCOUNT_ID}/email/sending/send"
+)
 
 
 def get_email_from():
