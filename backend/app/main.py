@@ -29,16 +29,15 @@ from app.services.auth_service import (
 from app.config import FRONTEND_URL, PASSWORD_RESET_MINUTES
 from app.services.notification_service import (
     notify_password_reset,
+    notify_welcome,
+    notify_league_match_schedule,
 )
-from app.services.notification_service import notify_password_reset
 from app.services.match_service import (
     register_match_metadata,
     notify_friendly_match_players,
     requires_confirmation,
 )
-from app.services.auth_service import hash_session_token
 from app.routers.matches import router as matches_router
-from app.services.notification_service import notify_league_match_schedule
 
 load_dotenv()
 
@@ -651,6 +650,16 @@ def register_player(player: PlayerRegister):
             ensure_player_rating(cur, new_player["id"])
 
             conn.commit()
+
+            if player.email:
+                try:
+                    notify_welcome(
+                        email=player.email,
+                        player_name=player.name,
+                    )
+                except Exception as e:
+                    print(f"Error enviando correo de bienvenida a {player.email}: {e}")
+
             return new_player
 
 
@@ -3831,6 +3840,14 @@ def player_account_register(data: PlayerAccountRegister):
             session = create_player_session(cur, player["id"])
 
             conn.commit()
+
+            try:
+                notify_welcome(
+                    email=email,
+                    player_name=player["name"],
+                )
+            except Exception as e:
+                print(f"Error enviando correo de bienvenida a {email}: {e}")
 
             # MVP: devolvemos verification_token solo para pruebas.
             # Luego se envía por correo y no se expone en la respuesta.
