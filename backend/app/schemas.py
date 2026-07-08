@@ -123,3 +123,7 @@ class MatchConfirmationTokenRequest(BaseModel):
 class MatchConfirmationTokenRequest(BaseModel):
     session_token: str
     confirmation_token: str
+class LeagueMatchScheduleUpdate(BaseModel):
+    scheduled_at: str | None = None
+    court: str | None = None
+    notify_players: bool = False

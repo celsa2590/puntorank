@@ -38,6 +38,7 @@ from app.services.match_service import (
 )
 from app.services.auth_service import hash_session_token
 from app.routers.matches import router as matches_router
+from app.services.notification_service import notify_league_match_schedule
 
 load_dotenv()
 
@@ -4431,3 +4432,96 @@ def player_dispute_match(match_id: int, data: PlayerMatchConfirm):
 
             return {"message": "Partido marcado como disputado. El club deberá revisarlo."}
 
+@app.patch("/league-matches/{match_id}/schedule")
+def update_league_match_schedule(match_id: int, data: LeagueMatchScheduleUpdate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE league_matches
+                SET scheduled_at = %s,
+                    court = %s
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (data.scheduled_at, data.court, match_id),
+            )
+
+            match = cur.fetchone()
+
+            if not match:
+                raise HTTPException(status_code=404, detail="Partido de liga no encontrado")
+
+            emails_sent = 0
+
+            if data.notify_players:
+                cur.execute(
+                    """
+                    SELECT
+                        ls.name AS league_name,
+                        c.name AS club_name,
+
+                        COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+                        COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                        p.email
+                    FROM league_matches lm
+                    JOIN league_seasons ls ON ls.id = lm.league_id
+                    LEFT JOIN clubs c ON c.id = ls.club_id
+
+                    JOIN league_pairs pa ON pa.id = lm.pair_a_id
+                    JOIN players p1a ON p1a.id = pa.player_1_id
+                    JOIN players p2a ON p2a.id = pa.player_2_id
+
+                    JOIN league_pairs pb ON pb.id = lm.pair_b_id
+                    JOIN players p1b ON p1b.id = pb.player_1_id
+                    JOIN players p2b ON p2b.id = pb.player_2_id
+
+                    JOIN players p ON p.id IN (
+                        pa.player_1_id,
+                        pa.player_2_id,
+                        pb.player_1_id,
+                        pb.player_2_id
+                    )
+
+                    WHERE lm.id = %s;
+                    """,
+                    (match_id,),
+                )
+
+                rows = cur.fetchall()
+
+                for row in rows:
+                    if not row["email"]:
+                        continue
+
+                    try:
+                        notify_league_match_schedule(
+                            email=row["email"],
+                            league_name=row["league_name"],
+                            club_name=row["club_name"],
+                            pair_a_name=row["pair_a_name"],
+                            pair_b_name=row["pair_b_name"],
+                            scheduled_at=str(data.scheduled_at) if data.scheduled_at else None,
+                            court=data.court,
+                        )
+                        emails_sent += 1
+                    except Exception as e:
+                        print(f"Error notificando partido de liga a {row['email']}: {e}")
+
+                cur.execute(
+                    """
+                    UPDATE league_matches
+                    SET last_schedule_notified_at = NOW()
+                    WHERE id = %s;
+                    """,
+                    (match_id,),
+                )
+
+            conn.commit()
+
+            return {
+                "message": "Programación actualizada",
+                "match": match,
+                "emails_sent": emails_sent,
+            }
