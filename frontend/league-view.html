@@ -681,7 +681,7 @@ async function finishLeague() {
 }
 
 async function loadPlayers() {
-  const response = await fetch(`${API_URL}/clubs/${clubId}/players`);
+  const response = await fetch(`${API_URL}/players`);
   players = await response.json();
 
   const p1 = document.getElementById("player1Select");
