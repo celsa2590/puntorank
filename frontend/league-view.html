@@ -555,6 +555,20 @@ function renderMatchCard(m) {
           ${m.score ? ` · Resultado: ${m.score}` : " · Sin resultado"}
           ${winnerName ? ` · Ganó: ${winnerName}` : ""}
         </div>
+        <div class="schedule-box">
+          <label>Fecha y hora</label>
+          <input type="datetime-local" id="scheduled_${m.id}" value="${m.scheduled_at ? m.scheduled_at.slice(0,16) : ""}">
+
+          <label>Cancha</label>
+          <input id="court_${m.id}" placeholder="Ej: Cancha 1" value="${m.court || ""}">
+
+          <label style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+            <input type="checkbox" id="notify_${m.id}">
+            Notificar jugadores por correo
+          </label>
+
+          <button onclick="saveLeagueSchedule(${m.id})">Guardar programación</button>
+        </div>
       </div>
 
       <input
@@ -862,6 +876,33 @@ function renderSummary() {
     </div>
   `;
 }
+
+async function saveLeagueSchedule(matchId) {
+  const scheduledAt = document.getElementById(`scheduled_${matchId}`).value;
+  const court = document.getElementById(`court_${matchId}`).value;
+  const notifyPlayers = document.getElementById(`notify_${matchId}`).checked;
+
+  const response = await fetch(`${API_URL}/league-matches/${matchId}/schedule`, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      scheduled_at: scheduledAt || null,
+      court: court || null,
+      notify_players: notifyPlayers
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo guardar la programación");
+    return;
+  }
+
+  alert(`Programación guardada. Correos enviados: ${result.emails_sent || 0}`);
+  await loadLeagueMatches();
+}
+
 
 function updateMetrics() {
   document.getElementById("metricPairs").innerText = currentPairs.length;
