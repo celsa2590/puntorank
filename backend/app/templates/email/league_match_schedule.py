@@ -26,4 +26,6 @@ def league_match_schedule_template(
     return base_email_template(
         title="Actualización de partido de liga",
         content=content,
+        icon="📅",
+        subtitle="Tu próximo partido ya tiene programación",
     )

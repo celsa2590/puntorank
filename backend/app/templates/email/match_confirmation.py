@@ -18,4 +18,6 @@ def match_confirmation_template(match_summary: str, confirm_url: str) -> str:
         content=content,
         button_text="Confirmar resultado",
         button_url=confirm_url,
+        icon="✅",
+        subtitle="Valida el resultado y protege tu ranking",
     )

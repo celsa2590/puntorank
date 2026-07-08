@@ -14,4 +14,6 @@ def password_reset_template(reset_url: str) -> str:
         content=content,
         button_text="Restablecer contraseña",
         button_url=reset_url,
+        icon="🔐",
+        subtitle="Recupera el acceso a tu cuenta",
     )
