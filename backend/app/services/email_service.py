@@ -2,12 +2,6 @@ import os
 import requests
 
 
-API_URL = (
-    f"https://api.cloudflare.com/client/v4/accounts/"
-    f"{ACCOUNT_ID}/email/sending/send"
-)
-
-
 def get_email_from():
     return os.getenv("EMAIL_FROM", "notificaciones@puntorank.cl")
 
@@ -18,7 +12,6 @@ def send_email(
     html: str,
     text: str | None = None,
 ):
-
     api_token = os.getenv("CLOUDFLARE_API_TOKEN")
     account_id = os.getenv("CLOUDFLARE_ACCOUNT_ID")
 
@@ -28,8 +21,13 @@ def send_email(
     if not account_id:
         raise RuntimeError("CLOUDFLARE_ACCOUNT_ID no configurado")
 
+    url = (
+        f"https://api.cloudflare.com/client/v4/accounts/"
+        f"{account_id}/email/sending/send"
+    )
+
     response = requests.post(
-        API_URL.format(account_id=account_id),
+        url,
         headers={
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
@@ -39,7 +37,7 @@ def send_email(
             "to": to_email,
             "subject": subject,
             "html": html,
-            "text": text or "",
+            "text": text or "Tienes una notificación de PuntoRank.",
         },
         timeout=20,
     )
