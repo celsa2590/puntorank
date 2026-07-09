@@ -105,6 +105,7 @@ async function loadDashboard() {
         · Pago: ${t.payment_status || "pendiente"}
       </span>
     </a>
+  `, "Aún no estás inscrito/a en torneos.");
 
   renderList("matchesBox", data.recent_matches || [], m => `
     <strong>${(m.team_a || []).join(" / ")} vs ${(m.team_b || []).join(" / ")}</strong><br>
