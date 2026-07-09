@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Ligas | PuntoRank</title>
+  <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="container">
+
+  <div class="top-nav">
+    <a class="btn secondary" href="index.html">🏠 Inicio</a>
+    <a class="btn secondary" href="ranking.html">Ranking</a>
+    <a class="btn secondary" href="tournaments.html">Torneos</a>
+    <a class="btn secondary" href="player-login.html">Ingresar jugador</a>
+    <a class="btn secondary" href="club-login.html">Ingreso clubes</a>
+  </div>
+
+  <h1>Ligas PuntoRank</h1>
+  <div class="title-accent"></div>
+  <p class="meta">Explora las ligas activas, sus tablas, fixtures y resultados.</p>
+
+  <div id="leaguesContainer" class="grid"></div>
+
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+
+async function loadLeagues() {
+  const res = await fetch(`${API_URL}/public/leagues`);
+  const leagues = await res.json();
+
+  const container = document.getElementById("leaguesContainer");
+  container.innerHTML = "";
+
+  if (!leagues.length) {
+    container.innerHTML = `<div class="card">Aún no hay ligas públicas.</div>`;
+    return;
+  }
+
+  leagues.forEach(l => {
+    const card = document.createElement("div");
+    card.className = "card";
+
+    card.innerHTML = `
+      <h3>${l.name}</h3>
+      <p class="meta">${l.club_name || "Club no asignado"} · ${l.category || ""} · ${l.gender || ""}</p>
+      <p><strong>${l.pairs_count || 0}</strong> parejas · <strong>${l.matches_count || 0}</strong> partidos</p>
+      <p class="meta">Estado: <strong>${l.status}</strong></p>
+      <a class="btn" href="league-public.html?id=${l.id}">Ver liga</a>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+loadLeagues();
+</script>
+</body>
+</html>

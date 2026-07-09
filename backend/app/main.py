@@ -2196,6 +2196,34 @@ def get_public_league_profile(league_id: int):
                 "matches": matches,
             }
 
+@app.get("/public/leagues")
+def get_public_leagues():
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    ls.id,
+                    ls.name,
+                    ls.category,
+                    ls.gender,
+                    ls.format,
+                    ls.status,
+                    ls.start_date,
+                    ls.end_date,
+                    c.name AS club_name,
+                    COUNT(DISTINCT lp.id) AS pairs_count,
+                    COUNT(DISTINCT lm.id) AS matches_count
+                FROM league_seasons ls
+                LEFT JOIN clubs c ON c.id = ls.club_id
+                LEFT JOIN league_pairs lp ON lp.league_id = ls.id
+                LEFT JOIN league_matches lm ON lm.league_id = ls.id
+                GROUP BY ls.id, c.name
+                ORDER BY ls.created_at DESC;
+                """
+            )
+            return cur.fetchall()
+
 @app.post("/leagues/{league_id}/finish")
 def finish_league(league_id: int):
 
