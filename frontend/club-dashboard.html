@@ -44,11 +44,11 @@
     <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
   </a>
 
-  <a class="card" href="club-send-credentials.html">
+  <div class="card" onclick="sendCredentials()" style="cursor:pointer;">
     <div class="icon">✉️</div>
     <div class="title">Enviar accesos</div>
-    <div class="desc">Envía usuario, contraseña temporal y enlace de ingreso a las jugadoras del club.</div>
-  </a>
+    <div class="desc">Envía usuario, contraseña temporal y enlace de ingreso a los jugadores/as del club.</div>
+  </div>
 
   <a class="card" href="club-history.html">
     <div class="icon">📜</div>
@@ -66,6 +66,7 @@
 <button class="logout" onclick="logout()">Cerrar sesión</button>
 
 <script>
+const API_URL = "https://puntorank-backend.onrender.com";
 const clubId = localStorage.getItem("club_id");
 const clubName = localStorage.getItem("club_name");
 const clubLogo = localStorage.getItem("club_logo");
@@ -81,6 +82,39 @@ if (clubLogo) {
   const img = document.getElementById("clubLogo");
   img.src = clubLogo;
   img.style.display = "block";
+}
+
+async function sendCredentials() {
+  if (!clubToken) {
+    window.location.href = "club-login.html";
+    return;
+  }
+
+  const ok = confirm("¿Enviar credenciales a los jugadores/as del club? Se generará una contraseña temporal nueva.");
+  if (!ok) return;
+
+  try {
+    const response = await fetch(`${API_URL}/club/players/send-credentials`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        token: clubToken,
+        reset_passwords: true
+      })
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      alert(result.detail || "No se pudieron enviar los correos.");
+      return;
+    }
+
+    alert(`Correos enviados: ${result.emails_sent}. Sin correo: ${result.players_without_email}.`);
+  } catch (error) {
+    console.error(error);
+    alert("Error enviando correos.");
+  }
 }
 
 function logout() {

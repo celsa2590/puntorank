@@ -28,11 +28,18 @@
 const API_URL = "https://puntorank-backend.onrender.com";
 
 async function loadLeagues() {
+  const container = document.getElementById("leaguesContainer");
+  container.innerHTML = `<div class="card">Cargando ligas...</div>`;
+
   const res = await fetch(`${API_URL}/public/leagues`);
   const leagues = await res.json();
 
-  const container = document.getElementById("leaguesContainer");
   container.innerHTML = "";
+
+  if (!res.ok) {
+    container.innerHTML = `<div class="card">No se pudieron cargar las ligas.</div>`;
+    return;
+  }
 
   if (!leagues.length) {
     container.innerHTML = `<div class="card">Aún no hay ligas públicas.</div>`;

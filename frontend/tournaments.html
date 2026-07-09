@@ -2,63 +2,29 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>PuntoRank - Torneos</title>
+  <title>Torneos | PuntoRank</title>
   <link rel="stylesheet" href="theme.css">
 </head>
 <body>
-<div class="top-nav">
-  <a class="nav-icon" href="index.html">🏠 Inicio</a>
-  <button class="nav-icon" onclick="history.back()">← Volver</button>
-</div>
+<div class="container">
 
-<div class="brand">Torneos</div>
-<div class="subtitle" id="clubLabel"></div>
+  <div class="top-nav">
+    <a class="btn secondary" href="index.html">🏠 Inicio</a>
+    <a class="btn secondary" href="ranking.html">Ranking</a>
+    <a class="btn secondary" href="public-leagues.html">Ligas</a>
+    <a class="btn secondary" href="player-login.html">Ingresar jugador</a>
+    <a class="btn secondary" href="club-login.html">Ingreso clubes</a>
+  </div>
 
-<div class="card">
-  <h2>Nuevo torneo</h2>
+  <h1>Torneos PuntoRank</h1>
+  <p class="meta">Explora los torneos activos, sus participantes, cruces y resultados.</p>
 
-  <input id="tournamentName" placeholder="Nombre del torneo. Ej: Torneo Femenino 5ta">
+  <div id="tournamentsContainer" class="grid"></div>
 
-  <select id="tournamentCategory">
-    <option value="">Selecciona categoría</option>
-    <option value="6ta">6ta</option>
-    <option value="5ta">5ta</option>
-    <option value="4ta">4ta</option>
-    <option value="3era">3era</option>
-    <option value="2da">2da</option>
-    <option value="1era">1era</option>
-  </select>
-
-  <select id="tournamentGender">
-    <option value="">Selecciona género</option>
-    <option value="femenino">Femenino</option>
-    <option value="masculino">Masculino</option>
-  </select>
-
-  <button onclick="createTournament()">Crear torneo</button>
-  <div id="createMessage" class="meta" style="margin-top:12px;"></div>
-</div>
-
-<div class="card">
-  <h2>Torneos activos</h2>
-  <div id="activeTournaments">Cargando...</div>
-</div>
-
-<div class="card">
-  <h2>Torneos finalizados</h2>
-  <div id="finishedTournaments">Cargando...</div>
 </div>
 
 <script>
 const API_URL = "https://puntorank-backend.onrender.com";
-const clubId = localStorage.getItem("club_id");
-const clubName = localStorage.getItem("club_name");
-
-if (!clubId) {
-  window.location.href = "club-login.html";
-}
-
-document.getElementById("clubLabel").innerText = `Club: ${clubName || clubId}`;
 
 function statusLabel(status) {
   const labels = {
@@ -72,90 +38,61 @@ function statusLabel(status) {
   return labels[status] || status || "Sin estado";
 }
 
-function tournamentCard(t) {
-  return `
-    <div class="tournament-card" onclick="window.location.href='tournament-view.html?id=${t.id}'">
-      <h3>${t.name}</h3>
-      <div class="meta">
-        Categoría: ${t.category || "-"}<br>
-        Género: ${t.gender || "-"}<br>
-        Parejas: ${t.pairs_count || 0} · Grupos: ${t.groups_count || 0} · Partidos: ${t.matches_count || 0}
-      </div>
-      <span class="status">${statusLabel(t.status)}</span>
-    </div>
-  `;
-}
-
 async function loadTournaments() {
-  const active = document.getElementById("activeTournaments");
-  const finished = document.getElementById("finishedTournaments");
+  const container = document.getElementById("tournamentsContainer");
+  container.innerHTML = `<div class="card">Cargando torneos...</div>`;
 
   try {
-    const response = await fetch(`${API_URL}/club/${clubId}/tournament_events`);
-    if (!response.ok) throw new Error(`Error API: ${response.status}`);
+    const res = await fetch(`${API_URL}/public/tournaments`);
+    const tournaments = await res.json();
 
-    const tournaments = await response.json();
-    const activeList = tournaments.filter(t => t.status !== "completed");
-    const finishedList = tournaments.filter(t => t.status === "completed");
+    container.innerHTML = "";
 
-    active.innerHTML = activeList.length
-      ? activeList.map(tournamentCard).join("")
-      : `<div class="meta">No hay torneos activos.</div>`;
+    if (!res.ok) {
+      container.innerHTML = `<div class="card">No se pudieron cargar los torneos.</div>`;
+      return;
+    }
 
-    finished.innerHTML = finishedList.length
-      ? finishedList.map(tournamentCard).join("")
-      : `<div class="meta">No hay torneos finalizados.</div>`;
+    if (!tournaments.length) {
+      container.innerHTML = `<div class="card">Aún no hay torneos públicos.</div>`;
+      return;
+    }
 
-  } catch (error) {
-    active.innerHTML = `<div class="error">No se pudieron cargar los torneos: ${error.message}</div>`;
-    finished.innerHTML = "";
-  }
-}
+    tournaments.forEach(t => {
+      const card = document.createElement("div");
+      card.className = "card";
 
-async function createTournament() {
-  const message = document.getElementById("createMessage");
-  message.className = "meta";
-  message.innerText = "Creando torneo...";
+      const logo = t.club_logo_url
+        ? `<img src="${t.club_logo_url}" class="club-logo small" alt="${t.club_name || "Club"}">`
+        : `<div class="club-logo small fallback-logo">🏟️</div>`;
 
-  const payload = {
-    club_id: Number(clubId),
-    name: document.getElementById("tournamentName").value.trim(),
-    category: document.getElementById("tournamentCategory").value,
-    gender: document.getElementById("tournamentGender").value
-  };
+      card.innerHTML = `
+        <div class="league-card-row">
+          ${logo}
+          <div style="flex:1; min-width:0;">
+            <h3>${t.name}</h3>
+            <p class="meta">${t.club_name || "Club no asignado"} · ${t.category || ""} · ${t.gender || ""}</p>
+            <p>
+              <strong>${t.pairs_count || 0}</strong> parejas
+              · <strong>${t.groups_count || 0}</strong> grupos
+              · <strong>${t.matches_count || 0}</strong> partidos
+            </p>
+            <p class="meta">Estado: <strong>${statusLabel(t.status)}</strong></p>
+            <a class="btn" href="tournament-public.html?id=${t.id}">Ver torneo</a>
+          </div>
+        </div>
+      `;
 
-  if (!payload.name || !payload.category || !payload.gender) {
-    message.className = "error";
-    message.innerText = "Completa nombre, categoría y género.";
-    return;
-  }
-
-  try {
-    const response = await fetch(`${API_URL}/tournament_events`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      container.appendChild(card);
     });
 
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.detail || "Error creando torneo");
-
-    message.className = "ok";
-    message.innerText = "Torneo creado correctamente.";
-
-    document.getElementById("tournamentName").value = "";
-    document.getElementById("tournamentCategory").value = "";
-    document.getElementById("tournamentGender").value = "";
-
-    window.location.href = `tournament-view.html?id=${data.id}`;
   } catch (error) {
-    message.className = "error";
-    message.innerText = error.message;
+    console.error(error);
+    container.innerHTML = `<div class="card">Error cargando torneos.</div>`;
   }
 }
 
 loadTournaments();
 </script>
-
 </body>
 </html>
