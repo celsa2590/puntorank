@@ -322,3 +322,6 @@ canvas { margin-top: 12px; max-height: 280px; }
 .tab-content.active {
   display: block;
 }
+[hidden] {
+  display: none !important;
+}
