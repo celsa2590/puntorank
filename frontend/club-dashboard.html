@@ -11,8 +11,13 @@
   <button class="nav-icon" onclick="history.back()">← Volver</button>
 </div>
 
-  <div class="brand">Panel PuntoRank</div>
-  <div class="subtitle" id="clubName"></div>
+  <div class="club-hero">
+    <img id="clubLogo" class="club-logo" style="display:none;">
+    <div>
+      <div class="brand">Panel PuntoRank</div>
+      <div id="clubName" class="subtitle"></div>
+    </div>
+  </div>
 
   <div class="grid">
     <a class="card" href="club-admin.html">
@@ -66,6 +71,17 @@
   const clubId = localStorage.getItem("club_id");
   const clubName = localStorage.getItem("club_name");
   const API_URL = "https://puntorank-backend.onrender.com";
+
+  const clubLogo = localStorage.getItem("club_logo");
+  const clubName = localStorage.getItem("club_name");
+
+  document.getElementById("clubName").innerText = `Club: ${clubName || ""}`;
+
+  if (clubLogo) {
+    const img = document.getElementById("clubLogo");
+    img.src = clubLogo;
+    img.style.display = "block";
+  }
 
   if (!clubId) {
     window.location.href = "club-login.html";
