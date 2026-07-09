@@ -1,18 +1,29 @@
-export function showTab(tabId) {
-  document.querySelectorAll(".tab-content").forEach(section => {
-    section.classList.remove("active");
-  });
+export function initTabs() {
 
-  document.querySelectorAll(".tab").forEach(button => {
-    button.classList.remove("active");
-  });
+    const tabs = document.querySelectorAll(".tab");
 
-  document.getElementById(tabId).classList.add("active");
+    tabs.forEach(tab => {
 
-  const activeButton = [...document.querySelectorAll(".tab")]
-    .find(button => button.getAttribute("onclick")?.includes(tabId));
+        tab.addEventListener("click", () => {
 
-  if (activeButton) {
-    activeButton.classList.add("active");
-  }
+            const tabId = tab.dataset.tab;
+
+            document
+                .querySelectorAll(".tab")
+                .forEach(t => t.classList.remove("active"));
+
+            document
+                .querySelectorAll(".tab-content")
+                .forEach(c => c.classList.remove("active"));
+
+            tab.classList.add("active");
+
+            document
+                .getElementById(tabId)
+                .classList.add("active");
+
+        });
+
+    });
+
 }
