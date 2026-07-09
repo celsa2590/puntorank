@@ -2243,7 +2243,7 @@ def get_public_leagues():
                 LEFT JOIN clubs c ON c.id = ls.club_id
                 LEFT JOIN league_pairs lp ON lp.league_id = ls.id
                 LEFT JOIN league_matches lm ON lm.league_id = ls.id
-                GROUP BY ls.id, c.name
+                GROUP BY ls.id, c.name, c.logo_url
                 ORDER BY ls.created_at DESC;
                 """
             )
