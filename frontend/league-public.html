@@ -1,36 +1,37 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-    <meta charset="UTF-8">
-    <title>Liga | PuntoRank</title>
-
-    <link rel="stylesheet" href="theme.css">
-    <script defer src="league-public.js"></script>
+  <meta charset="UTF-8">
+  <title>Liga | PuntoRank</title>
+  <link rel="stylesheet" href="theme.css">
 </head>
-
 <body>
-
 <div class="container">
 
-    <a class="btn secondary" href="index.html">← Inicio</a>
+  <div class="top-nav">
+    <a class="btn secondary" href="index.html">🏠 Inicio</a>
+    <a class="btn secondary" href="public-leagues.html">Ligas</a>
+    <a class="btn secondary" href="ranking.html">Ranking</a>
+  </div>
 
-    <div id="leagueHeader"></div>
+  <div id="leagueHeader" class="card"></div>
 
-    <hr>
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('summary')">📋 Resumen</button>
+    <button class="tab" onclick="showTab('standings')">🏆 Posiciones</button>
+    <button class="tab" onclick="showTab('matches')">📅 Fixture</button>
+    <button class="tab" onclick="showTab('participants')">👥 Participantes</button>
+    <button class="tab" onclick="showTab('stats')">📊 Estadísticas</button>
+  </div>
 
-    <h2>🏆 Tabla de posiciones</h2>
-
-    <div id="standingsContainer"></div>
-
-    <hr>
-
-    <h2>📅 Fixture</h2>
-
-    <div id="matchesContainer"></div>
+  <section id="summary" class="tab-content active"></section>
+  <section id="standings" class="tab-content"></section>
+  <section id="matches" class="tab-content"></section>
+  <section id="participants" class="tab-content"></section>
+  <section id="stats" class="tab-content"></section>
 
 </div>
 
+<script type="module" src="league-public/index.js"></script>
 </body>
-
 </html>
