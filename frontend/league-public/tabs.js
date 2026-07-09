@@ -1,29 +1,24 @@
 export function initTabs() {
+  const tabs = document.querySelectorAll(".tab");
+  const contents = document.querySelectorAll(".tab-content");
 
-    const tabs = document.querySelectorAll(".tab");
-
+  function activate(tabId) {
     tabs.forEach(tab => {
-
-        tab.addEventListener("click", () => {
-
-            const tabId = tab.dataset.tab;
-
-            document
-                .querySelectorAll(".tab")
-                .forEach(t => t.classList.remove("active"));
-
-            document
-                .querySelectorAll(".tab-content")
-                .forEach(c => c.classList.remove("active"));
-
-            tab.classList.add("active");
-
-            document
-                .getElementById(tabId)
-                .classList.add("active");
-
-        });
-
+      tab.classList.toggle("active", tab.dataset.tab === tabId);
     });
 
+    contents.forEach(content => {
+      const isActive = content.id === tabId;
+      content.classList.toggle("active", isActive);
+      content.style.display = isActive ? "block" : "none";
+    });
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      activate(tab.dataset.tab);
+    });
+  });
+
+  activate("summary");
 }
