@@ -16,21 +16,29 @@ export function renderParticipants(pairs) {
   });
 
   Object.keys(groups).forEach(groupName => {
-    let html = `<div class="card"><h2>${groupName}</h2>`;
+    let html = `<div class="card"><h2>${groupName}</h2><div class="grid">`;
 
     groups[groupName].forEach(pair => {
       html += `
-        <div class="row">
-          <strong>${pair.pair_name}</strong>
-          <div class="meta">
-            👤 ${pair.player_1_name}<br>
-            👤 ${pair.player_2_name}
+        <div class="card">
+          <h3>${pair.pair_name}</h3>
+
+          <div class="row">
+            👤 <a href="player-profile.html?id=${pair.player_1_id || ""}">
+              ${pair.player_1_name}
+            </a>
+          </div>
+
+          <div class="row">
+            👤 <a href="player-profile.html?id=${pair.player_2_id || ""}">
+              ${pair.player_2_name}
+            </a>
           </div>
         </div>
       `;
     });
 
-    html += `</div>`;
+    html += `</div></div>`;
     container.innerHTML += html;
   });
 }
