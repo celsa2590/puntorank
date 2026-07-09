@@ -2236,7 +2236,7 @@ def get_public_leagues():
                     ls.start_date,
                     ls.end_date,
                     c.name AS club_name,
-                    c.logo_url AS club_logo_url
+                    c.logo_url AS club_logo_url,
                     COUNT(DISTINCT lp.id) AS pairs_count,
                     COUNT(DISTINCT lm.id) AS matches_count
                 FROM league_seasons ls
