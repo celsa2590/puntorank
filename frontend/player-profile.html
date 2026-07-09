@@ -20,6 +20,7 @@
       margin: 18px 0;
     }
     .profile-name { font-size: 30px; font-weight: 950; color: #111827; margin-bottom: 8px; }
+    .profile-left { display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
     .profile-meta { color: #6b7280; line-height: 1.5; }
     .profile-rating { text-align: right; }
     .profile-rating .value { color: #3f7f40; font-size: 44px; font-weight: 950; }
@@ -109,11 +110,17 @@ async function loadProfile() {
 
     document.getElementById("profileContainer").innerHTML = `
       <section class="profile-hero">
-        <div>
-          <div class="profile-name">${player.name}</div>
-          <div class="profile-meta">Lado: ${side}</div>
-          <div class="profile-meta">Clubes: ${clubs || "Sin club"}</div>
-          <div class="profile-meta">Categoría: ${player.category || "Sin categoría"}</div>
+        <div class="profile-left">
+          ${player.photo_url
+            ? `<img class="player-avatar-xl" src="${player.photo_url}" alt="Foto de ${player.name}">`
+            : `<div class="player-avatar-fallback xl">👤</div>`
+          }
+          <div>
+            <div class="profile-name">${player.name}</div>
+            <div class="profile-meta">Lado: ${side}</div>
+            <div class="profile-meta">Clubes: ${clubs || "Sin club"}</div>
+            <div class="profile-meta">Categoría: ${player.category || "Sin categoría"}</div>
+          </div>
         </div>
         <div class="profile-rating">
           <div class="value">${Number(player.rating || 1000).toFixed(2)}</div>

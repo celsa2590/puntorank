@@ -57,7 +57,7 @@
 
       const club = await response.json();
 
-      localStorage.setItem("club_logo", club.logo_url);
+      localStorage.setItem("club_logo", club.logo_url || "");
       localStorage.setItem("club_id", club.id);
       localStorage.setItem("club_name", club.name);
       localStorage.setItem("club_token", club.session_token);

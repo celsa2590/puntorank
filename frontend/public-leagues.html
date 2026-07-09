@@ -43,12 +43,21 @@ async function loadLeagues() {
     const card = document.createElement("div");
     card.className = "card";
 
+    const logo = l.club_logo_url
+      ? `<img src="${l.club_logo_url}" class="club-logo small" alt="${l.club_name || "Club"}">`
+      : `<div class="club-logo small fallback-logo">🏟️</div>`;
+
     card.innerHTML = `
-      <h3>${l.name}</h3>
-      <p class="meta">${l.club_name || "Club no asignado"} · ${l.category || ""} · ${l.gender || ""}</p>
-      <p><strong>${l.pairs_count || 0}</strong> parejas · <strong>${l.matches_count || 0}</strong> partidos</p>
-      <p class="meta">Estado: <strong>${l.status}</strong></p>
-      <a class="btn" href="league-public.html?id=${l.id}">Ver liga</a>
+      <div class="league-card-row">
+        ${logo}
+        <div style="flex:1; min-width:0;">
+          <h3>${l.name}</h3>
+          <p class="meta">${l.club_name || "Club no asignado"} · ${l.category || ""} · ${l.gender || ""}</p>
+          <p><strong>${l.pairs_count || 0}</strong> parejas · <strong>${l.matches_count || 0}</strong> partidos</p>
+          <p class="meta">Estado: <strong>${l.status}</strong></p>
+          <a class="btn" href="league-public.html?id=${l.id}">Ver liga</a>
+        </div>
+      </div>
     `;
 
     container.appendChild(card);

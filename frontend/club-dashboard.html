@@ -11,155 +11,85 @@
   <button class="nav-icon" onclick="history.back()">← Volver</button>
 </div>
 
-  <div class="club-hero">
-    <img id="clubLogo" class="club-logo" style="display:none;">
-    <div>
-      <div class="brand">Panel PuntoRank</div>
-      <div id="clubName" class="subtitle"></div>
-    </div>
+<div class="club-hero">
+  <img id="clubLogo" class="club-logo" style="display:none;" alt="Logo del club">
+  <div>
+    <h1 id="clubName">Club</h1>
+    <div class="subtitle">Panel de administración</div>
   </div>
+</div>
 
-  <div class="grid">
-    <a class="card" href="club-admin.html">
-      <div class="icon">✅</div>
-      <div class="title">Validar partidos amistosos</div>
-      <div class="desc">Revisa resultados pendientes. Al aprobarlos, impactan el ranking y pasan al histórico.</div>
-    </a>
+<div class="grid">
+  <a class="card" href="club-admin.html">
+    <div class="icon">✅</div>
+    <div class="title">Validar partidos amistosos</div>
+    <div class="desc">Revisa resultados pendientes. Al aprobarlos, impactan el ranking y pasan al histórico.</div>
+  </a>
 
-    <a class="card" href="americanos.html">
-      <div class="icon">🎾</div>
-      <div class="title">Crear Americano</div>
-      <div class="desc">Crea americanos por categoría, canchas y duración. Genera partidos y tabla en vivo.</div>
-    </a>
+  <a class="card" href="americanos.html">
+    <div class="icon">🎾</div>
+    <div class="title">Crear Americano</div>
+    <div class="desc">Crea americanos por categoría, canchas y duración. Genera partidos y tabla en vivo.</div>
+  </a>
 
-<a class="card" href="leagues.html">
-  <div class="icon">📅</div>
-  <div class="title">Ligas</div>
-  <div class="desc">
-    Crea ligas, edita parejas, genera fixture y carga resultados.
-  </div>
-</a>
+  <a class="card" href="leagues.html">
+    <div class="icon">📅</div>
+    <div class="title">Ligas</div>
+    <div class="desc">Crea ligas, edita parejas, genera fixture y carga resultados.</div>
+  </a>
 
+  <a class="card" href="tournaments.html">
+    <div class="icon">🏆</div>
+    <div class="title">Torneos</div>
+    <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
+  </a>
 
-    <a class="card" href="tournaments.html">
-      <div class="icon">🏆</div>
-      <div class="title">Torneos</div>
-      <div class="desc">Crea llaves, cruces y resultados con impacto ponderado en el ranking.</div>
-    </a>
+  <a class="card" href="club-send-credentials.html">
+    <div class="icon">✉️</div>
+    <div class="title">Enviar accesos</div>
+    <div class="desc">Envía usuario, contraseña temporal y enlace de ingreso a las jugadoras del club.</div>
+  </a>
 
-    <a class="card" href="club-history.html">
-      <div class="icon">📜</div>
-      <div class="title">Historial</div>
-      <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
-    </a>
+  <a class="card" href="club-history.html">
+    <div class="icon">📜</div>
+    <div class="title">Historial</div>
+    <div class="desc">Consulta partidos, americanos, ligas y torneos ya finalizados.</div>
+  </a>
 
-<a class="card" href="club-change-password.html">
-  <div class="icon">🔐</div>
-  <h3>Cambiar contraseña</h3>
-  <p>Actualiza la clave de acceso del club.</p>
-</a>
+  <a class="card" href="club-change-password.html">
+    <div class="icon">🔐</div>
+    <div class="title">Cambiar contraseña</div>
+    <div class="desc">Actualiza la clave de acceso del club.</div>
+  </a>
+</div>
 
-
-
-  </div>
-
-
-
-  <button class="logout" onclick="logout()">Cerrar sesión</button>
+<button class="logout" onclick="logout()">Cerrar sesión</button>
 
 <script>
-  const clubId = localStorage.getItem("club_id");
-  const clubName = localStorage.getItem("club_name");
-  const API_URL = "https://puntorank-backend.onrender.com";
+const clubId = localStorage.getItem("club_id");
+const clubName = localStorage.getItem("club_name");
+const clubLogo = localStorage.getItem("club_logo");
+const clubToken = localStorage.getItem("club_token");
 
-  const clubLogo = localStorage.getItem("club_logo");
-  const clubName = localStorage.getItem("club_name");
-
-  document.getElementById("clubName").innerText = `Club: ${clubName || ""}`;
-
-  if (clubLogo) {
-    const img = document.getElementById("clubLogo");
-    img.src = clubLogo;
-    img.style.display = "block";
-  }
-
-  if (!clubId) {
-    window.location.href = "club-login.html";
-  }
-
-  document.getElementById("clubName").innerText = `Club: ${clubName}`;
-
-  function logout() {
-    localStorage.removeItem("club_id");
-    localStorage.removeItem("club_name");
-    window.location.href = "club-login.html";
-  }
-
-function showCreateLeague() {
-  const box = document.getElementById("createLeagueBox");
-
-  box.style.display =
-    box.style.display === "none"
-      ? "block"
-      : "none";
+if (!clubId || !clubToken) {
+  window.location.href = "club-login.html";
 }
 
-async function createLeague() {
+document.getElementById("clubName").textContent = clubName || "Club";
 
-  const response = await fetch(`${API_URL}/leagues`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      club_id: clubId,
-      name: document.getElementById("leagueName").value,
-      category: document.getElementById("leagueCategory").value,
-      gender: document.getElementById("leagueGender").value
-    })
-  });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    alert(result.detail || "No se pudo crear la liga.");
-    return;
-  }
-
-  document.getElementById("leagueName").value = "";
-
-  await loadLeagues();
+if (clubLogo) {
+  const img = document.getElementById("clubLogo");
+  img.src = clubLogo;
+  img.style.display = "block";
 }
 
-async function loadLeagues() {
-  const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
-  const leagues = await response.json();
-
-  const container = document.getElementById("leaguesList");
-
-  if (leagues.length === 0) {
-    container.innerHTML = "Aún no existen ligas.";
-    return;
-  }
-
-  container.innerHTML = leagues.map(l => `
-    <div class="row">
-      <strong>${l.name}</strong><br>
-
-      <span class="meta">
-        ${l.category} · ${l.gender}<br>
-        Parejas: ${l.pairs_count}<br>
-        Estado: ${l.status}
-      </span><br>
-
-      <a class="btn" href="league-view.html?id=${l.id}">
-        Abrir liga
-      </a>
-    </div>
-  `).join("");
+function logout() {
+  localStorage.removeItem("club_id");
+  localStorage.removeItem("club_name");
+  localStorage.removeItem("club_logo");
+  localStorage.removeItem("club_token");
+  window.location.href = "club-login.html";
 }
-
 </script>
-
 </body>
 </html>

@@ -517,6 +517,7 @@ def get_player_profile(player_id: int):
                     p.name,
                     p.side,
                     p.category,
+                    p.photo_url,
                     p.is_registered,
                     ROUND(pr.rating, 2) AS rating,
                     pr.matches_count,
@@ -534,7 +535,7 @@ def get_player_profile(player_id: int):
                 LEFT JOIN player_clubs pc ON pc.player_id = p.id
                 LEFT JOIN clubs c ON c.id = pc.club_id
                 WHERE p.id = %s
-                GROUP BY p.id, p.name, p.side, p.category, p.is_registered, pr.rating, pr.matches_count;
+                GROUP BY p.id, p.name, p.side, p.category, p.photo_url, p.is_registered, pr.rating, pr.matches_count;
                 """,
                 (player_id,),
             )
@@ -671,7 +672,7 @@ def club_login(login: ClubLogin):
 
             cur.execute(
                 """
-                SELECT id, name
+                SELECT id, name, logo_url
                 FROM clubs
                 WHERE username = %s
                   AND password = %s;
@@ -703,6 +704,7 @@ def club_login(login: ClubLogin):
             return {
                 "id": club["id"],
                 "name": club["name"],
+                "logo_url": club.get("logo_url"),
                 "session_token": session_token
             }
 
@@ -3889,6 +3891,7 @@ def get_authenticated_player(cur, session_token: str):
             p.gender,
             p.category,
             p.side,
+            p.photo_url,
             p.is_registered,
             p.email_verified
         FROM player_sessions ps
@@ -3942,6 +3945,40 @@ class ClubChangePassword(BaseModel):
     current_password: str
     new_password: str
 
+class ClubSendCredentialsRequest(BaseModel):
+    token: str
+    reset_passwords: bool = True
+
+class PlayerPhotoUpdate(BaseModel):
+    session_token: str
+    photo_url: str | None = None
+
+def get_authenticated_club(cur, session_token: str):
+    if not session_token:
+        raise HTTPException(status_code=401, detail="Sesión requerida")
+
+    cur.execute(
+        """
+        SELECT c.*
+        FROM club_sessions cs
+        JOIN clubs c ON c.id = cs.club_id
+        WHERE cs.session_token = %s
+          AND cs.expires_at > NOW();
+        """,
+        (session_token,),
+    )
+
+    club = cur.fetchone()
+
+    if not club:
+        raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
+
+    return club
+
+def make_temp_password(length: int = 8):
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
 @app.post("/club/change-password")
 def club_change_password(data: ClubChangePassword):
     with get_conn() as conn:
@@ -3987,6 +4024,157 @@ def club_change_password(data: ClubChangePassword):
             conn.commit()
 
             return {"message": "Contraseña actualizada correctamente"}
+
+
+@app.get("/club/me")
+def club_me(token: str):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(cur, token)
+            return {
+                "id": club["id"],
+                "name": club["name"],
+                "city": club.get("city"),
+                "logo_url": club.get("logo_url"),
+            }
+
+@app.post("/club/players/send-credentials")
+def club_send_player_credentials(data: ClubSendCredentialsRequest):
+    frontend_url = FRONTEND_URL
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(cur, data.token)
+
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.email
+                FROM players p
+                LEFT JOIN player_clubs pc
+                    ON pc.player_id = p.id
+                WHERE p.email IS NOT NULL
+                  AND TRIM(p.email) <> ''
+                  AND (
+                    p.club_id = %s
+                    OR pc.club_id = %s
+                  )
+                ORDER BY p.name;
+                """,
+                (club["id"], club["id"]),
+            )
+            players = cur.fetchall()
+
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT p.id) AS total_without_email
+                FROM players p
+                LEFT JOIN player_clubs pc
+                    ON pc.player_id = p.id
+                WHERE (p.email IS NULL OR TRIM(p.email) = '')
+                  AND (
+                    p.club_id = %s
+                    OR pc.club_id = %s
+                  );
+                """,
+                (club["id"], club["id"]),
+            )
+            without_email = cur.fetchone()["total_without_email"]
+
+            emails_sent = 0
+            errors = []
+
+            for player in players:
+                temp_password = make_temp_password()
+
+                if data.reset_passwords:
+                    cur.execute(
+                        """
+                        UPDATE players
+                        SET password_hash = %s,
+                            is_registered = TRUE
+                        WHERE id = %s;
+                        """,
+                        (hash_password(temp_password), player["id"]),
+                    )
+
+                login_link = f"{frontend_url}/player-login.html"
+                reset_link = f"{frontend_url}/player-forgot-password.html"
+                profile_link = f"{frontend_url}/player-profile.html?id={player['id']}"
+
+                html = f"""
+                <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#111827;">
+                  <h1 style="margin:0 0 12px;">PuntoRank</h1>
+                  <p>Hola {player['name']},</p>
+                  <p><strong>{club['name']}</strong> creó tu perfil de jugadora en PuntoRank.</p>
+                  <div style="background:#f6f8f7;border:1px solid #dfe7e2;border-radius:16px;padding:16px;margin:18px 0;">
+                    <p style="margin:0 0 8px;"><strong>Usuario:</strong> {player['email']}</p>
+                    <p style="margin:0;"><strong>Contraseña temporal:</strong> {temp_password}</p>
+                  </div>
+                  <p>
+                    <a href="{login_link}" style="display:inline-block;background:#18a957;color:white;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:bold;">
+                      Ingresar a PuntoRank
+                    </a>
+                  </p>
+                  <p>Por seguridad, después de ingresar te recomendamos cambiar tu contraseña desde “Olvidé mi contraseña”.</p>
+                  <p><a href="{reset_link}">Cambiar o recuperar contraseña</a></p>
+                  <p><a href="{profile_link}">Ver tu perfil público</a></p>
+                  <p style="color:#66736d;font-size:13px;">Si no esperabas este correo, puedes ignorarlo.</p>
+                </div>
+                """
+
+                text = (
+                    f"Hola {player['name']},\n\n"
+                    f"{club['name']} creó tu perfil en PuntoRank.\n\n"
+                    f"Usuario: {player['email']}\n"
+                    f"Contraseña temporal: {temp_password}\n\n"
+                    f"Ingresa aquí: {login_link}\n"
+                    f"Para cambiar o recuperar contraseña: {reset_link}\n"
+                    f"Perfil público: {profile_link}\n"
+                )
+
+                try:
+                    send_email(
+                        to_email=player["email"],
+                        subject="Tu acceso a PuntoRank",
+                        html=html,
+                        text=text,
+                    )
+                    emails_sent += 1
+                except Exception as e:
+                    errors.append({"player_id": player["id"], "email": player["email"], "error": str(e)})
+                    print(f"Error enviando credenciales a {player['email']}: {e}")
+
+            conn.commit()
+
+            return {
+                "message": "Proceso terminado",
+                "emails_sent": emails_sent,
+                "players_without_email": without_email,
+                "errors": errors,
+            }
+
+@app.post("/player/photo")
+def player_update_photo(data: PlayerPhotoUpdate):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(cur, data.session_token)
+
+            cur.execute(
+                """
+                UPDATE players
+                SET photo_url = %s
+                WHERE id = %s
+                RETURNING id, name, photo_url;
+                """,
+                (data.photo_url, player["id"]),
+            )
+
+            updated = cur.fetchone()
+            conn.commit()
+            return updated
 
 @app.post("/player/register")
 def player_account_register(data: PlayerAccountRegister):

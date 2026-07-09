@@ -24,9 +24,13 @@
 
 <div class="dash-shell">
   <div class="dash-header">
-    <div>
-      <div class="brand">Mi PuntoRank</div>
-      <div id="playerSubtitle" class="subtitle">Cargando cuenta...</div>
+    <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap;">
+      <img id="playerAvatar" class="player-avatar" style="display:none;" alt="Foto de perfil">
+      <div id="playerAvatarFallback" class="player-avatar-fallback small">👤</div>
+      <div>
+        <div class="brand">Mi PuntoRank</div>
+        <div id="playerSubtitle" class="subtitle">Cargando cuenta...</div>
+      </div>
     </div>
     <button class="secondary" onclick="logout()">Cerrar sesión</button>
   </div>
@@ -34,6 +38,7 @@
   <div class="quick-actions">
     <a class="btn" href="create-match.html">Registrar partido</a>
     <a class="btn secondary" id="profileLink" href="#">Ver perfil público</a>
+    <a class="btn secondary" href="player-photo.html">Cambiar foto</a>
     <a class="btn secondary" href="ranking.html">Ranking</a>
   </div>
 
@@ -76,6 +81,17 @@ async function loadDashboard() {
 
   const p = data.player;
   document.getElementById("playerSubtitle").innerText = `${p.name} · ${p.category || "Sin categoría"} · ${p.gender || "Sin género"}`;
+
+  const avatar = document.getElementById("playerAvatar");
+  const fallback = document.getElementById("playerAvatarFallback");
+  if (p.photo_url) {
+    avatar.src = p.photo_url;
+    avatar.style.display = "block";
+    fallback.style.display = "none";
+  } else {
+    avatar.style.display = "none";
+    fallback.style.display = "flex";
+  }
   document.getElementById("profileLink").href = `player-profile.html?id=${p.id}`;
   document.getElementById("ratingValue").innerText = Number(data.rating?.rating || 1000).toFixed(2);
   document.getElementById("matchesValue").innerText = data.rating?.matches_count || 0;
