@@ -8,9 +8,7 @@ export function initTabs() {
     });
 
     contents.forEach(content => {
-      const isActive = content.id === tabId;
-      content.classList.toggle("active", isActive);
-      content.style.display = isActive ? "block" : "none";
+      content.hidden = content.id !== tabId;
     });
   }
 
