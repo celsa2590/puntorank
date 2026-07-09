@@ -2104,7 +2104,8 @@ def get_public_league_profile(league_id: int):
                     ls.status,
                     ls.start_date,
                     ls.end_date,
-                    c.name AS club_name
+                    c.name AS club_name,
+                    c.logo_url AS club_logo_url
                 FROM league_seasons ls
                 LEFT JOIN clubs c ON c.id = ls.club_id
                 WHERE ls.id = %s;
@@ -2235,6 +2236,7 @@ def get_public_leagues():
                     ls.start_date,
                     ls.end_date,
                     c.name AS club_name,
+                    c.logo_url AS club_logo_url
                     COUNT(DISTINCT lp.id) AS pairs_count,
                     COUNT(DISTINCT lm.id) AS matches_count
                 FROM league_seasons ls
