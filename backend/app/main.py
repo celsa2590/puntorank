@@ -3916,6 +3916,57 @@ class PlayerMatchCreate(BaseModel):
 class PlayerMatchConfirm(BaseModel):
     session_token: str
 
+class ClubChangePassword(BaseModel):
+    token: str
+    current_password: str
+    new_password: str
+
+@app.post("/club/change-password")
+def club_change_password(data: ClubChangePassword):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT c.*
+                FROM club_sessions cs
+                JOIN clubs c ON c.id = cs.club_id
+                WHERE cs.session_token = %s
+                  AND cs.expires_at > NOW();
+                """,
+                (data.token,),
+            )
+
+            club = cur.fetchone()
+
+            if not club:
+                raise HTTPException(status_code=401, detail="Sesión inválida")
+
+            if club["password"] != data.current_password:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La contraseña actual no es correcta"
+                )
+
+            if len(data.new_password) < 6:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La nueva contraseña debe tener al menos 6 caracteres"
+                )
+
+            cur.execute(
+                """
+                UPDATE clubs
+                SET password = %s
+                WHERE id = %s;
+                """,
+                (data.new_password, club["id"]),
+            )
+
+            conn.commit()
+
+            return {"message": "Contraseña actualizada correctamente"}
+
 @app.post("/player/register")
 def player_account_register(data: PlayerAccountRegister):
     email = data.email.strip().lower()
