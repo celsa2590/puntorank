@@ -2,6 +2,11 @@ export function renderStandings(rows) {
   const container = document.getElementById("standings");
   container.innerHTML = "";
 
+  if (!rows || rows.length === 0) {
+    container.innerHTML = `<div class="card">Aún no hay posiciones disponibles.</div>`;
+    return;
+  }
+
   const groups = {};
 
   rows.forEach(r => {
@@ -11,37 +16,31 @@ export function renderStandings(rows) {
   });
 
   Object.keys(groups).forEach(group => {
-    let html = `
-      <div class="card">
-        <h2>${group}</h2>
-        <table class="table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Pareja</th>
-              <th>PJ</th>
-              <th>PG</th>
-              <th>PP</th>
-              <th>Pts</th>
-            </tr>
-          </thead>
-          <tbody>
-    `;
+    let html = `<div class="card"><h2>${group}</h2>`;
 
     groups[group].forEach((team, index) => {
+      const medal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `${index + 1}.`;
+
       html += `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${team.pair_name}</td>
-          <td>${team.played}</td>
-          <td>${team.wins}</td>
-          <td>${team.losses}</td>
-          <td><strong>${team.points}</strong></td>
-        </tr>
+        <div class="ranking-card">
+          <div class="position">${medal}</div>
+
+          <div>
+            <div class="name">${team.pair_name}</div>
+            <div class="meta">
+              PJ ${team.played} · PG ${team.wins} · PP ${team.losses}
+            </div>
+          </div>
+
+          <div class="rating-box">
+            ${team.points}
+            <div class="meta">pts</div>
+          </div>
+        </div>
       `;
     });
 
-    html += `</tbody></table></div>`;
+    html += `</div>`;
     container.innerHTML += html;
   });
 }
