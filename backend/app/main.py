@@ -668,6 +668,7 @@ def register_player(player: PlayerRegister):
 def club_login(login: ClubLogin):
     with get_conn() as conn:
         with conn.cursor() as cur:
+
             cur.execute(
                 """
                 SELECT id, name
@@ -681,11 +682,29 @@ def club_login(login: ClubLogin):
             club = cur.fetchone()
 
             if not club:
-                raise HTTPException(status_code=401, detail="Usuario o clave incorrectos")
+                raise HTTPException(
+                    status_code=401,
+                    detail="Usuario o clave incorrectos"
+                )
 
-            return club
+            session_token = secrets.token_urlsafe(32)
+            expires_at = datetime.utcnow() + timedelta(days=30)
 
+            cur.execute(
+                """
+                INSERT INTO club_sessions (club_id, session_token, expires_at)
+                VALUES (%s, %s, %s);
+                """,
+                (club["id"], session_token, expires_at),
+            )
 
+            conn.commit()
+
+            return {
+                "id": club["id"],
+                "name": club["name"],
+                "session_token": session_token
+            }
 
 @app.get("/club/{club_id}/history")
 def get_club_history(club_id: int):
