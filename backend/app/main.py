@@ -2103,7 +2103,9 @@ def get_public_league_profile(league_id: int):
                     lp.id AS pair_id,
                     COALESCE(lp.group_name, 'Grupo único') AS group_name,
                     COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+                    p1.id AS player_1_id,
                     p1.name AS player_1_name,
+                    p2.id AS player_2_id,
                     p2.name AS player_2_name
                 FROM league_pairs lp
                 JOIN players p1 ON p1.id = lp.player_1_id
