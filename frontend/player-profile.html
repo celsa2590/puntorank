@@ -291,6 +291,8 @@ function normalizeLeagueMatch(m) {
   const won = (isPairA && m.winner_pair_id === m.pair_a_id) || (!isPairA && m.winner_pair_id === m.pair_b_id);
   return {
     source_type: "Liga",
+    league_id: m.league_id,
+    league_name: m.league_name,
     played_at: m.played_at,
     category: m.category,
     club_name: m.club_name,
@@ -338,7 +340,13 @@ function renderMatchesHistory() {
     return `
       <div class="history-row">
         <div>
-          <div class="history-title">${m.source_type} · ${m.category || "Sin categoría"}</div>
+          <div class="history-title">
+            ${
+              m.source_type === "Liga" && m.league_id
+                ? `<a href="league-public.html?id=${m.league_id}">${m.league_name || "Liga"}</a>`
+                : `${m.source_type} · ${m.category || "Sin categoría"}`
+            }
+          </div>
           <div class="history-subtitle">${formatDate(m.played_at)} · ${m.club_name || "Club no asignado"}</div>
           <div class="history-subtitle">${m.pair_a_name} vs ${m.pair_b_name}</div>
         </div>

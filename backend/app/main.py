@@ -1602,6 +1602,8 @@ def get_player_matches_history(player_id: int):
                 SELECT
                     'league_match' AS source_type,
                     lm.id AS source_id,
+                    ls.id AS league_id,
+                    ls.name AS league_name,
                     COALESCE(lm.played_at, ls.created_at) AS played_at,
                     ls.category,
                     'liga' AS match_type,
