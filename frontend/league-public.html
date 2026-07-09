@@ -33,5 +33,23 @@
 </div>
 
 <script type="module" src="league-public/index.js"></script>
+
+<script>
+  document.addEventListener("click", function (event) {
+    const tab = event.target.closest(".tab");
+    if (!tab) return;
+
+    const tabId = tab.dataset.tab;
+
+    document.querySelectorAll(".tab").forEach(function (button) {
+      button.classList.toggle("active", button.dataset.tab === tabId);
+    });
+
+    document.querySelectorAll(".tab-content").forEach(function (section) {
+      section.hidden = section.id !== tabId;
+    });
+  });
+</script>
+
 </body>
 </html>

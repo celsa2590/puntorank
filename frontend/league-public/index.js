@@ -4,7 +4,6 @@ import { renderStandings } from "./standings.js";
 import { renderMatches } from "./matches.js";
 import { renderParticipants } from "./participants.js";
 import { renderStatistics } from "./statistics.js";
-import { initTabs } from "./tabs.js";
 
 const API_URL = "https://puntorank-backend.onrender.com";
 
@@ -12,7 +11,6 @@ const API_URL = "https://puntorank-backend.onrender.com";
 const params = new URLSearchParams(window.location.search);
 const leagueId = params.get("id");
 
-initTabs();
 loadLeague();
 
 async function loadLeague() {
