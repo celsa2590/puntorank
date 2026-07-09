@@ -82,14 +82,29 @@ async function loadDashboard() {
   document.getElementById("deltaValue").innerText = fmt(data.stats?.total_delta || 0);
 
   renderList("leaguesBox", data.leagues || [], l => `
-    <strong>${l.name}</strong><br>
-    <span class="meta">${l.category || "-"} · ${l.gender || "-"} · ${l.status || "-"}<br>${l.pair_name || ""}</span>
+    <a href="league-public.html?id=${l.id}" style="text-decoration:none;color:inherit;">
+        <strong>${l.name}</strong>
+        <br>
+        <span class="meta">
+          ${l.category || "-"} · ${l.gender || "-"} · ${l.status || "-"}
+          <br>
+          ${l.pair_name || ""}
+        </span>
+    </a>
   `, "Aún no estás inscrito/a en ligas.");
 
   renderList("tournamentsBox", data.tournaments || [], t => `
-    <strong>${t.name}</strong><br>
-    <span class="meta">${t.category || "-"} · ${t.gender || "-"} · ${t.status || "-"}<br>${t.pair_name || ""} · Pago: ${t.payment_status || "pendiente"}</span>
-  `, "Aún no estás inscrito/a en torneos.");
+  <a href="tournament-public.html?id=${t.id}" style="text-decoration:none;color:inherit;">
+  <strong>${t.name}</strong><br>
+  <span class="meta">
+  ${t.category || "-"} ·
+  ${t.gender || "-"} ·
+  ${t.status || "-"}
+  <br>
+  ${t.pair_name || ""}
+  · Pago: ${t.payment_status || "pendiente"}
+  </span>
+  </a>
 
   renderList("matchesBox", data.recent_matches || [], m => `
     <strong>${(m.team_a || []).join(" / ")} vs ${(m.team_b || []).join(" / ")}</strong><br>
