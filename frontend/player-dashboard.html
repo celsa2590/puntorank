@@ -94,17 +94,17 @@ async function loadDashboard() {
   `, "Aún no estás inscrito/a en ligas.");
 
   renderList("tournamentsBox", data.tournaments || [], t => `
-  <a href="tournament-public.html?id=${t.id}" style="text-decoration:none;color:inherit;">
-  <strong>${t.name}</strong><br>
-  <span class="meta">
-  ${t.category || "-"} ·
-  ${t.gender || "-"} ·
-  ${t.status || "-"}
-  <br>
-  ${t.pair_name || ""}
-  · Pago: ${t.payment_status || "pendiente"}
-  </span>
-  </a>
+    <a href="tournament-public.html?id=${t.id}" style="text-decoration:none;color:inherit;">
+      <strong>${t.name}</strong><br>
+      <span class="meta">
+        ${t.category || "-"} ·
+        ${t.gender || "-"} ·
+        ${t.status || "-"}
+        <br>
+        ${t.pair_name || ""}
+        · Pago: ${t.payment_status || "pendiente"}
+      </span>
+    </a>
 
   renderList("matchesBox", data.recent_matches || [], m => `
     <strong>${(m.team_a || []).join(" / ")} vs ${(m.team_b || []).join(" / ")}</strong><br>
