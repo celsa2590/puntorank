@@ -9,14 +9,14 @@ export function renderMatches(matches) {
 
   const groups = {};
 
-  matches.forEach(m => {
-    const group = m.group_name || "Grupo único";
-    const round = m.round_number || "Sin ronda";
+  matches.forEach(match => {
+    const group = match.group_name || "Grupo único";
+    const round = match.round_number || "Sin ronda";
 
     if (!groups[group]) groups[group] = {};
     if (!groups[group][round]) groups[group][round] = [];
 
-    groups[group][round].push(m);
+    groups[group][round].push(match);
   });
 
   Object.keys(groups).forEach(groupName => {
@@ -27,7 +27,10 @@ export function renderMatches(matches) {
 
       groups[groupName][roundNumber].forEach(match => {
         const scheduled = match.scheduled_at
-          ? new Date(match.scheduled_at).toLocaleString("es-CL")
+          ? new Date(match.scheduled_at).toLocaleString("es-CL", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })
           : "Fecha por definir";
 
         const court = match.court || "Cancha por definir";
@@ -39,27 +42,39 @@ export function renderMatches(matches) {
               ? match.pair_b_name
               : null;
 
+        const statusLabel = match.status === "completed"
+          ? "Finalizado"
+          : "Pendiente";
+
         groupHtml += `
           <div class="match-card">
-            <div class="meta">${scheduled} · ${court}</div>
+            <div class="meta">📅 ${scheduled} · 🎾 ${court}</div>
 
-            <div style="margin-top:8px;">
-              <strong>${match.pair_a_name}</strong>
-              <div class="meta">vs</div>
-              <strong>${match.pair_b_name}</strong>
+            <div style="display:grid; grid-template-columns:1fr auto 1fr; gap:12px; align-items:center; margin-top:14px;">
+              <div>
+                <strong>${match.pair_a_name}</strong>
+              </div>
+
+              <div class="badge">VS</div>
+
+              <div style="text-align:right;">
+                <strong>${match.pair_b_name}</strong>
+              </div>
             </div>
 
-            <div style="margin-top:8px;">
+            <div style="margin-top:14px;">
               ${
                 match.score
                   ? `<span class="badge">Resultado: ${match.score}</span>`
                   : `<span class="meta">Resultado pendiente</span>`
               }
+
+              <span class="badge" style="margin-left:8px;">${statusLabel}</span>
             </div>
 
             ${
               winner
-                ? `<div class="meta" style="margin-top:6px;">Ganador: <strong>${winner}</strong></div>`
+                ? `<div class="meta" style="margin-top:8px;">Ganador: <strong>${winner}</strong></div>`
                 : ""
             }
           </div>
