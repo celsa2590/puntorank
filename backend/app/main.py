@@ -38,7 +38,7 @@ from app.services.match_service import (
 )
 from app.routers.matches import router as matches_router
 from fastapi import FastAPI, HTTPException, Header
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 load_dotenv()
@@ -3987,7 +3987,7 @@ class ClubLeagueWelcomeRequest(BaseModel):
 
 
 class InternalTemplateTestRequest(BaseModel):
-    to_email: EmailStr
+    to_email: str
     template: str
     player_name: str = "Celsa Sánchez"
     temporary_password: str = "Prueba123"
@@ -4195,7 +4195,7 @@ def test_email_template(
     if template == "credentials":
         html, text = credentials_email_template(
             player_name=data.player_name,
-            email=str(data.to_email),
+            email=email,
             temporary_password=data.temporary_password,
             club_name=data.club_name,
         )
@@ -4217,7 +4217,7 @@ def test_email_template(
         )
 
     result = send_email(
-        to_email=str(data.to_email),
+        to_email=email,
         subject=subject,
         html=html,
         text=text,
@@ -4226,7 +4226,7 @@ def test_email_template(
     return {
         "message": "Correo de prueba enviado",
         "template": template,
-        "to_email": str(data.to_email),
+        "to_email": email,
         "result": result,
     }
 
