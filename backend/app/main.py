@@ -2036,6 +2036,137 @@ def get_league_pairs(league_id: int):
             return cur.fetchall()
 
 
+def process_league_match_rating(
+    cur,
+    match_id: int,
+) -> bool:
+    """
+    Procesa el rating de un partido de liga una sola vez.
+
+    Devuelve:
+        True  -> el rating fue procesado ahora.
+        False -> ya había sido procesado.
+    """
+
+    cur.execute(
+        """
+        SELECT
+            lm.id,
+            lm.status,
+            lm.played_at,
+            lm.winner_pair_id,
+            lm.rating_processed,
+
+            pa.id AS pair_a_id,
+            pa.player_1_id AS a1,
+            pa.player_2_id AS a2,
+
+            pb.id AS pair_b_id,
+            pb.player_1_id AS b1,
+            pb.player_2_id AS b2
+
+        FROM league_matches lm
+
+        JOIN league_pairs pa
+            ON pa.id = lm.pair_a_id
+
+        JOIN league_pairs pb
+            ON pb.id = lm.pair_b_id
+
+        WHERE lm.id = %s
+
+        FOR UPDATE;
+        """,
+        (match_id,),
+    )
+
+    match = cur.fetchone()
+
+    if not match:
+        raise HTTPException(
+            status_code=404,
+            detail="Partido de liga no encontrado",
+        )
+
+    if match["rating_processed"]:
+        return False
+
+    if match["status"] != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El rating solo puede procesarse "
+                "cuando el partido está completado"
+            ),
+        )
+
+    if match["winner_pair_id"] is None:
+        raise HTTPException(
+            status_code=400,
+            detail="El partido no tiene pareja ganadora",
+        )
+
+    if match["winner_pair_id"] == match["pair_a_id"]:
+        winner = "A"
+
+    elif match["winner_pair_id"] == match["pair_b_id"]:
+        winner = "B"
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "La pareja ganadora no pertenece "
+                "al partido"
+            ),
+        )
+
+    update_rating_pair_vs_pair(
+        cur=cur,
+        player_ids_team_a=[
+            match["a1"],
+            match["a2"],
+        ],
+        player_ids_team_b=[
+            match["b1"],
+            match["b2"],
+        ],
+        winner=winner,
+        match_id=None,
+        source_type="league_match",
+        source_id=match["id"],
+        multiplier=get_rating_multiplier(
+            "league_match"
+        ),
+    )
+
+    cur.execute(
+        """
+        UPDATE league_matches
+        SET rating_processed = TRUE
+        WHERE id = %s;
+        """,
+        (match_id,),
+    )
+
+    # Mantiene el historial ordenado por la fecha real
+    # del partido, especialmente para recuperaciones.
+    cur.execute(
+        """
+        UPDATE rating_history
+        SET created_at = COALESCE(%s, created_at)
+        WHERE source_type = 'league_match'
+          AND source_id = %s;
+        """,
+        (
+            match["played_at"],
+            match_id,
+        ),
+    )
+
+    return True
+
+
 @app.post("/league-matches/{match_id}/result")
 def save_league_match_result(
     match_id: int,
@@ -2044,8 +2175,6 @@ def save_league_match_result(
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Obtenemos el partido, la liga, las parejas
-            # y los datos necesarios para los correos.
             cur.execute(
                 """
                 SELECT
@@ -2054,6 +2183,7 @@ def save_league_match_result(
                     lm.league_id,
                     lm.pair_a_id,
                     lm.pair_b_id,
+                    lm.rating_processed,
 
                     ls.name AS league_name,
                     ls.status AS league_status,
@@ -2113,7 +2243,9 @@ def save_league_match_result(
                 JOIN players p2b
                     ON p2b.id = pb.player_2_id
 
-                WHERE lm.id = %s;
+                WHERE lm.id = %s
+
+                FOR UPDATE OF lm;
                 """,
                 (match_id,),
             )
@@ -2129,7 +2261,22 @@ def save_league_match_result(
             if match["league_status"] == "completed":
                 raise HTTPException(
                     status_code=400,
-                    detail="No puedes modificar una liga finalizada",
+                    detail=(
+                        "No puedes modificar una liga "
+                        "finalizada"
+                    ),
+                )
+
+            # Una corrección posterior requeriría revertir
+            # primero el movimiento Elo anterior.
+            if match["status"] == "completed":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Este resultado ya fue registrado. "
+                        "No puede modificarse porque ya "
+                        "impactó el ranking"
+                    ),
                 )
 
             if data.winner_pair_id not in (
@@ -2152,7 +2299,6 @@ def save_league_match_result(
                     detail="Debes ingresar el resultado",
                 )
 
-            # Validamos y contamos los sets.
             raw_sets = score.split()
 
             sets_a = 0
@@ -2164,7 +2310,8 @@ def save_league_match_result(
                         status_code=400,
                         detail=(
                             "Formato de resultado inválido. "
-                            "Usa, por ejemplo: 6-4 3-6 6-2"
+                            "Usa, por ejemplo: "
+                            "6-4 3-6 6-2"
                         ),
                     )
 
@@ -2173,27 +2320,32 @@ def save_league_match_result(
                 try:
                     games_a = int(left)
                     games_b = int(right)
+
                 except ValueError as exc:
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "El resultado debe contener números. "
-                            "Ejemplo: 6-4 3-6 6-2"
+                            "El resultado debe contener "
+                            "números. Ejemplo: "
+                            "6-4 3-6 6-2"
                         ),
                     ) from exc
 
                 if games_a < 0 or games_b < 0:
                     raise HTTPException(
                         status_code=400,
-                        detail="Los games no pueden ser negativos",
+                        detail=(
+                            "Los games no pueden "
+                            "ser negativos"
+                        ),
                     )
 
                 if games_a == games_b:
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "Un set no puede terminar empatado: "
-                            f"{raw_set}"
+                            "Un set no puede terminar "
+                            f"empatado: {raw_set}"
                         ),
                     )
 
@@ -2202,8 +2354,6 @@ def save_league_match_result(
                 else:
                     sets_b += 1
 
-            # Regla especial de la liga femenina de Arena:
-            # se juegan obligatoriamente los tres sets.
             if (
                 match["scoring_mode"]
                 == "sets_2_plus_match_1"
@@ -2212,8 +2362,9 @@ def save_league_match_result(
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "Esta liga exige cargar exactamente "
-                            "3 sets. Ejemplo: 6-4 3-6 6-2"
+                            "Esta liga exige cargar "
+                            "exactamente 3 sets. "
+                            "Ejemplo: 6-4 3-6 6-2"
                         ),
                     )
 
@@ -2231,13 +2382,10 @@ def save_league_match_result(
                         status_code=400,
                         detail=(
                             "La pareja ganadora seleccionada "
-                            "no coincide con los sets ingresados"
+                            "no coincide con los sets "
+                            "ingresados"
                         ),
                     )
-
-            was_already_completed = (
-                match["status"] == "completed"
-            )
 
             cur.execute(
                 """
@@ -2250,7 +2398,10 @@ def save_league_match_result(
                     pair_a_used_substitute = %s,
                     pair_b_used_substitute = %s,
                     status = 'completed',
-                    played_at = COALESCE(played_at, NOW())
+                    played_at = COALESCE(
+                        played_at,
+                        NOW()
+                    )
                 WHERE id = %s
                 RETURNING *;
                 """,
@@ -2267,7 +2418,35 @@ def save_league_match_result(
 
             updated_match = cur.fetchone()
 
-            # Confirmamos el resultado antes de enviar los correos.
+            # Procesa Elo dentro de la misma transacción.
+            # Si falla el rating, tampoco se guarda el resultado.
+            rating_processed_now = (
+                process_league_match_rating(
+                    cur,
+                    match_id,
+                )
+            )
+
+            cur.execute(
+                """
+                SELECT
+                    player_id,
+                    ROUND(rating_before, 2)
+                        AS rating_before,
+                    ROUND(rating_after, 2)
+                        AS rating_after,
+                    ROUND(delta, 2)
+                        AS delta
+                FROM rating_history
+                WHERE source_type = 'league_match'
+                  AND source_id = %s
+                ORDER BY player_id;
+                """,
+                (match_id,),
+            )
+
+            rating_changes = cur.fetchall()
+
             conn.commit()
 
             winner_name = (
@@ -2285,28 +2464,36 @@ def save_league_match_result(
                     "name": match["a1_name"],
                     "email": match["a1_email"],
                     "pair_id": match["pair_a_id"],
-                    "pair_name": match["pair_a_name"],
+                    "pair_name": (
+                        match["pair_a_name"]
+                    ),
                 },
                 {
                     "id": match["a2_id"],
                     "name": match["a2_name"],
                     "email": match["a2_email"],
                     "pair_id": match["pair_a_id"],
-                    "pair_name": match["pair_a_name"],
+                    "pair_name": (
+                        match["pair_a_name"]
+                    ),
                 },
                 {
                     "id": match["b1_id"],
                     "name": match["b1_name"],
                     "email": match["b1_email"],
                     "pair_id": match["pair_b_id"],
-                    "pair_name": match["pair_b_name"],
+                    "pair_name": (
+                        match["pair_b_name"]
+                    ),
                 },
                 {
                     "id": match["b2_id"],
                     "name": match["b2_name"],
                     "email": match["b2_email"],
                     "pair_id": match["pair_b_id"],
-                    "pair_name": match["pair_b_name"],
+                    "pair_name": (
+                        match["pair_b_name"]
+                    ),
                 },
             ]
 
@@ -2314,135 +2501,168 @@ def save_league_match_result(
             email_errors = []
             players_without_email = []
 
-            # Solo notificamos la primera vez que se completa.
-            if not was_already_completed:
-                for player in players:
-                    email = (
-                        player["email"].strip()
-                        if player["email"]
-                        else ""
-                    )
+            # El resultado y el rating ya están confirmados.
+            # Un error de correo no los revierte.
+            for player in players:
+                email = (
+                    player["email"].strip()
+                    if player["email"]
+                    else ""
+                )
 
-                    if not email:
-                        players_without_email.append(
-                            {
-                                "player_id": player["id"],
-                                "player_name": player["name"],
-                            }
-                        )
-                        continue
-
-                    player_won = (
-                        player["pair_id"]
-                        == data.winner_pair_id
-                    )
-
-                    html, text = (
-                        league_match_result_email_template(
-                            player_name=player["name"],
-                            league_name=match["league_name"],
-                            club_name=(
-                                match["club_name"]
-                                or "PuntoRank"
+                if not email:
+                    players_without_email.append(
+                        {
+                            "player_id": player["id"],
+                            "player_name": (
+                                player["name"]
                             ),
-                            league_id=match["league_id"],
-                            pair_a_name=match["pair_a_name"],
-                            pair_b_name=match["pair_b_name"],
-                            score=score,
-                            winner_name=winner_name,
-                            player_pair_name=player["pair_name"],
-                            player_won=player_won,
-                        )
+                        }
+                    )
+                    continue
+
+                player_won = (
+                    player["pair_id"]
+                    == data.winner_pair_id
+                )
+
+                html, text = (
+                    league_match_result_email_template(
+                        player_name=player["name"],
+                        league_name=(
+                            match["league_name"]
+                        ),
+                        club_name=(
+                            match["club_name"]
+                            or "PuntoRank"
+                        ),
+                        league_id=(
+                            match["league_id"]
+                        ),
+                        pair_a_name=(
+                            match["pair_a_name"]
+                        ),
+                        pair_b_name=(
+                            match["pair_b_name"]
+                        ),
+                        score=score,
+                        winner_name=winner_name,
+                        player_pair_name=(
+                            player["pair_name"]
+                        ),
+                        player_won=player_won,
+                    )
+                )
+
+                try:
+                    send_email(
+                        to_email=email,
+                        subject=(
+                            "Resultado registrado: "
+                            f"{match['pair_a_name']} vs "
+                            f"{match['pair_b_name']}"
+                        ),
+                        html=html,
+                        text=text,
                     )
 
-                    try:
-                        send_email(
-                            to_email=email,
-                            subject=(
-                                "Resultado registrado: "
-                                f"{match['pair_a_name']} vs "
-                                f"{match['pair_b_name']}"
+                    emails_sent += 1
+
+                except Exception as exc:
+                    print(
+                        "Error enviando resultado de liga "
+                        f"match={match_id} "
+                        f"player={player['id']} "
+                        f"email={email}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+
+                    email_errors.append(
+                        {
+                            "player_id": player["id"],
+                            "player_name": (
+                                player["name"]
                             ),
-                            html=html,
-                            text=text,
-                        )
+                            "email": email,
+                            "error": str(exc),
+                        }
+                    )
 
-                        emails_sent += 1
+            pair_a_points = (
+                sets_a * 2
+                + (
+                    1
+                    if (
+                        data.winner_pair_id
+                        == match["pair_a_id"]
+                    )
+                    else 0
+                )
+                if (
+                    match["scoring_mode"]
+                    == "sets_2_plus_match_1"
+                )
+                else (
+                    3
+                    if (
+                        data.winner_pair_id
+                        == match["pair_a_id"]
+                    )
+                    else 0
+                )
+            )
 
-                    except Exception as exc:
-                        print(
-                            "Error enviando resultado de liga "
-                            f"match={match_id} "
-                            f"player={player['id']} "
-                            f"email={email}: "
-                            f"{type(exc).__name__}: {exc}"
-                        )
+            pair_b_points = (
+                sets_b * 2
+                + (
+                    1
+                    if (
+                        data.winner_pair_id
+                        == match["pair_b_id"]
+                    )
+                    else 0
+                )
+                if (
+                    match["scoring_mode"]
+                    == "sets_2_plus_match_1"
+                )
+                else (
+                    3
+                    if (
+                        data.winner_pair_id
+                        == match["pair_b_id"]
+                    )
+                    else 0
+                )
+            )
 
-                        email_errors.append(
-                            {
-                                "player_id": player["id"],
-                                "player_name": player["name"],
-                                "email": email,
-                                "error": str(exc),
-                            }
-                        )
+            if data.pair_a_used_substitute:
+                pair_a_points -= 1
+
+            if data.pair_b_used_substitute:
+                pair_b_points -= 1
 
             return {
-                "message": "Resultado guardado correctamente",
+                "message": (
+                    "Resultado guardado y "
+                    "ranking actualizado"
+                ),
                 "match": updated_match,
+                "rating": {
+                    "processed": (
+                        rating_processed_now
+                    ),
+                    "changes": rating_changes,
+                },
                 "scoring": {
                     "mode": match["scoring_mode"],
                     "pair_a_sets_won": sets_a,
                     "pair_b_sets_won": sets_b,
-                    "pair_a_points": (
-                        sets_a * 2
-                        + (
-                            1
-                            if (
-                                data.winner_pair_id
-                                == match["pair_a_id"]
-                            )
-                            else 0
-                        )
-                        if (
-                            match["scoring_mode"]
-                            == "sets_2_plus_match_1"
-                        )
-                        else (
-                            3
-                            if (
-                                data.winner_pair_id
-                                == match["pair_a_id"]
-                            )
-                            else 0
-                        )
-                    ),
-                    "pair_b_points": (
-                        sets_b * 2
-                        + (
-                            1
-                            if (
-                                data.winner_pair_id
-                                == match["pair_b_id"]
-                            )
-                            else 0
-                        )
-                        if (
-                            match["scoring_mode"]
-                            == "sets_2_plus_match_1"
-                        )
-                        else (
-                            3
-                            if (
-                                data.winner_pair_id
-                                == match["pair_b_id"]
-                            )
-                            else 0
-                        )
-                    ),
+                    "pair_a_points": pair_a_points,
+                    "pair_b_points": pair_b_points,
                 },
                 "notification": {
-                    "sent": not was_already_completed,
+                    "sent": True,
                     "emails_sent": emails_sent,
                     "players_without_email": (
                         players_without_email
@@ -2450,7 +2670,6 @@ def save_league_match_result(
                     "errors": email_errors,
                 },
             }
-
 
 @app.get("/leagues/{league_id}/standings")
 def get_league_standings(league_id: int):
@@ -3065,17 +3284,20 @@ def get_public_leagues():
             )
             return cur.fetchall()
 
+
 @app.post("/leagues/{league_id}/finish")
 def finish_league(league_id: int):
-
     with get_conn() as conn:
         with conn.cursor() as cur:
 
             cur.execute(
                 """
-                SELECT id, status
+                SELECT
+                    id,
+                    status
                 FROM league_seasons
-                WHERE id = %s;
+                WHERE id = %s
+                FOR UPDATE;
                 """,
                 (league_id,),
             )
@@ -3083,10 +3305,18 @@ def finish_league(league_id: int):
             league = cur.fetchone()
 
             if not league:
-                raise HTTPException(status_code=404, detail="Liga no encontrada")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada",
+                )
 
             if league["status"] == "completed":
-                raise HTTPException(status_code=400, detail="Esta liga ya fue finalizada")
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Esta liga ya fue finalizada"
+                    ),
+                )
 
             cur.execute(
                 """
@@ -3103,71 +3333,42 @@ def finish_league(league_id: int):
             if pending > 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Faltan {pending} partidos por completar",
+                    detail=(
+                        f"Faltan {pending} partidos "
+                        "por completar"
+                    ),
                 )
 
             cur.execute(
                 """
-                SELECT
-                    lm.id,
-                    lm.winner_pair_id,
-                    lm.rating_processed,
-
-                    pa.id AS pair_a_id,
-                    pa.player_1_id AS a1,
-                    pa.player_2_id AS a2,
-
-                    pb.id AS pair_b_id,
-                    pb.player_1_id AS b1,
-                    pb.player_2_id AS b2
-
-                FROM league_matches lm
-
-                JOIN league_pairs pa
-                    ON pa.id = lm.pair_a_id
-
-                JOIN league_pairs pb
-                    ON pb.id = lm.pair_b_id
-
-                WHERE lm.league_id = %s;
+                SELECT id
+                FROM league_matches
+                WHERE league_id = %s
+                  AND status = 'completed'
+                  AND rating_processed = FALSE
+                ORDER BY
+                    played_at NULLS LAST,
+                    id;
                 """,
                 (league_id,),
             )
 
-            matches = cur.fetchall()
+            pending_rating_matches = (
+                cur.fetchall()
+            )
 
-            for match in matches:
+            ratings_processed = 0
 
-                if match["rating_processed"]:
-                    continue
-
-                winner = "A" if match["winner_pair_id"] == match["pair_a_id"] else "B"
-
-                update_rating_pair_vs_pair(
-                    cur=cur,
-                    player_ids_team_a=[
-                        match["a1"],
-                        match["a2"],
-                    ],
-                    player_ids_team_b=[
-                        match["b1"],
-                        match["b2"],
-                    ],
-                    winner=winner,
-                    match_id=None,
-                    source_type="league_match",
-                    source_id=match["id"],
-                    multiplier=get_rating_multiplier("league_match")
+            for row in pending_rating_matches:
+                processed = (
+                    process_league_match_rating(
+                        cur,
+                        row["id"],
+                    )
                 )
 
-                cur.execute(
-                    """
-                    UPDATE league_matches
-                    SET rating_processed = TRUE
-                    WHERE id = %s;
-                    """,
-                    (match["id"],),
-                )
+                if processed:
+                    ratings_processed += 1
 
             cur.execute(
                 """
@@ -3184,8 +3385,82 @@ def finish_league(league_id: int):
             conn.commit()
 
             return {
-                "message": "Liga finalizada correctamente",
+                "message": (
+                    "Liga finalizada correctamente"
+                ),
                 "league": result,
+                "ratings_processed_as_backup": (
+                    ratings_processed
+                ),
+            }
+
+@app.post(
+    "/leagues/{league_id}/process-pending-ratings"
+)
+def process_pending_league_ratings(
+    league_id: int,
+):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+
+            cur.execute(
+                """
+                SELECT id
+                FROM league_seasons
+                WHERE id = %s;
+                """,
+                (league_id,),
+            )
+
+            if not cur.fetchone():
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada",
+                )
+
+            cur.execute(
+                """
+                SELECT id
+                FROM league_matches
+                WHERE league_id = %s
+                  AND status = 'completed'
+                  AND winner_pair_id IS NOT NULL
+                  AND rating_processed = FALSE
+                ORDER BY
+                    played_at NULLS LAST,
+                    id;
+                """,
+                (league_id,),
+            )
+
+            matches = cur.fetchall()
+
+            processed_ids = []
+
+            for match in matches:
+                processed = (
+                    process_league_match_rating(
+                        cur,
+                        match["id"],
+                    )
+                )
+
+                if processed:
+                    processed_ids.append(
+                        match["id"]
+                    )
+
+            conn.commit()
+
+            return {
+                "message": (
+                    "Ratings pendientes procesados"
+                ),
+                "league_id": league_id,
+                "matches_processed": len(
+                    processed_ids
+                ),
+                "match_ids": processed_ids,
             }
 
 @app.get("/clubs/{club_id}/players")
