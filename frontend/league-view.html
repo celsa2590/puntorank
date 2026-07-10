@@ -514,7 +514,32 @@ async function generateFixture() {
     return;
   }
 
+  const notification = result.notification || {};
+  const emailsSent = notification.emails_sent || 0;
+  const withoutEmail =
+    notification.players_without_email?.length || 0;
+  const errors =
+    notification.errors?.length || 0;
+
+  let message = "✅ Resultado guardado correctamente.";
+
+  if (notification.sent) {
+    message += `\nCorreos enviados: ${emailsSent}.`;
+
+    if (withoutEmail > 0) {
+      message += `\nJugadores sin correo: ${withoutEmail}.`;
+    }
+
+    if (errors > 0) {
+      message += `\nErrores de envío: ${errors}.`;
+    }
+  } else {
+    message += "\nNo se reenviaron notificaciones.";
+  }
+
+  alert(message);
   await refreshAll();
+
 }
 
 async function loadMatches() {

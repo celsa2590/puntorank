@@ -1998,10 +1998,124 @@ def get_league_pairs(league_id: int):
 
 
 @app.post("/league-matches/{match_id}/result")
-def save_league_match_result(match_id: int, data: LeagueMatchResult):
-
+def save_league_match_result(
+    match_id: int,
+    data: LeagueMatchResult,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
+
+            # Obtenemos todos los datos antes de actualizar.
+            cur.execute(
+                """
+                SELECT
+                    lm.id,
+                    lm.status,
+                    lm.league_id,
+                    lm.pair_a_id,
+                    lm.pair_b_id,
+
+                    ls.name AS league_name,
+                    ls.status AS league_status,
+
+                    c.name AS club_name,
+
+                    COALESCE(
+                        pa.pair_name,
+                        p1a.name || ' / ' || p2a.name
+                    ) AS pair_a_name,
+
+                    COALESCE(
+                        pb.pair_name,
+                        p1b.name || ' / ' || p2b.name
+                    ) AS pair_b_name,
+
+                    pa.player_1_id AS a1_id,
+                    p1a.name AS a1_name,
+                    p1a.email AS a1_email,
+
+                    pa.player_2_id AS a2_id,
+                    p2a.name AS a2_name,
+                    p2a.email AS a2_email,
+
+                    pb.player_1_id AS b1_id,
+                    p1b.name AS b1_name,
+                    p1b.email AS b1_email,
+
+                    pb.player_2_id AS b2_id,
+                    p2b.name AS b2_name,
+                    p2b.email AS b2_email
+
+                FROM league_matches lm
+
+                JOIN league_seasons ls
+                  ON ls.id = lm.league_id
+
+                LEFT JOIN clubs c
+                  ON c.id = ls.club_id
+
+                JOIN league_pairs pa
+                  ON pa.id = lm.pair_a_id
+
+                JOIN players p1a
+                  ON p1a.id = pa.player_1_id
+
+                JOIN players p2a
+                  ON p2a.id = pa.player_2_id
+
+                JOIN league_pairs pb
+                  ON pb.id = lm.pair_b_id
+
+                JOIN players p1b
+                  ON p1b.id = pb.player_1_id
+
+                JOIN players p2b
+                  ON p2b.id = pb.player_2_id
+
+                WHERE lm.id = %s;
+                """,
+                (match_id,),
+            )
+
+            match = cur.fetchone()
+
+            if not match:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Partido de liga no encontrado",
+                )
+
+            if match["league_status"] == "completed":
+                raise HTTPException(
+                    status_code=400,
+                    detail="No puedes modificar una liga finalizada",
+                )
+
+            if data.winner_pair_id not in (
+                match["pair_a_id"],
+                match["pair_b_id"],
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "La pareja ganadora no pertenece "
+                        "a este partido"
+                    ),
+                )
+
+            score = data.score.strip()
+
+            if not score:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Debes ingresar el resultado",
+                )
+
+            # Evita que se reenvíen correos si el endpoint se llama
+            # nuevamente para un partido ya completado.
+            was_already_completed = (
+                match["status"] == "completed"
+            )
 
             cur.execute(
                 """
@@ -2010,25 +2124,148 @@ def save_league_match_result(match_id: int, data: LeagueMatchResult):
                     score = %s,
                     winner_pair_id = %s,
                     status = 'completed',
-                    played_at = NOW()
+                    played_at = COALESCE(played_at, NOW())
                 WHERE id = %s
                 RETURNING *;
                 """,
                 (
-                    data.score,
+                    score,
                     data.winner_pair_id,
                     match_id,
                 ),
             )
 
-            match = cur.fetchone()
+            updated_match = cur.fetchone()
 
-            if not match:
-                raise HTTPException(status_code=404, detail="Partido de liga no encontrado")
-
+            # Guardamos primero el resultado.
             conn.commit()
 
-            return match
+            winner_name = (
+                match["pair_a_name"]
+                if data.winner_pair_id == match["pair_a_id"]
+                else match["pair_b_name"]
+            )
+
+            players = [
+                {
+                    "id": match["a1_id"],
+                    "name": match["a1_name"],
+                    "email": match["a1_email"],
+                    "pair_id": match["pair_a_id"],
+                    "pair_name": match["pair_a_name"],
+                },
+                {
+                    "id": match["a2_id"],
+                    "name": match["a2_name"],
+                    "email": match["a2_email"],
+                    "pair_id": match["pair_a_id"],
+                    "pair_name": match["pair_a_name"],
+                },
+                {
+                    "id": match["b1_id"],
+                    "name": match["b1_name"],
+                    "email": match["b1_email"],
+                    "pair_id": match["pair_b_id"],
+                    "pair_name": match["pair_b_name"],
+                },
+                {
+                    "id": match["b2_id"],
+                    "name": match["b2_name"],
+                    "email": match["b2_email"],
+                    "pair_id": match["pair_b_id"],
+                    "pair_name": match["pair_b_name"],
+                },
+            ]
+
+            emails_sent = 0
+            email_errors = []
+            players_without_email = []
+
+            # Solo se notifica la primera vez que se completa.
+            if not was_already_completed:
+                for player in players:
+                    email = (
+                        player["email"].strip()
+                        if player["email"]
+                        else ""
+                    )
+
+                    if not email:
+                        players_without_email.append(
+                            {
+                                "player_id": player["id"],
+                                "player_name": player["name"],
+                            }
+                        )
+                        continue
+
+                    player_won = (
+                        player["pair_id"]
+                        == data.winner_pair_id
+                    )
+
+                    html, text = (
+                        league_match_result_email_template(
+                            player_name=player["name"],
+                            league_name=match["league_name"],
+                            club_name=(
+                                match["club_name"]
+                                or "PuntoRank"
+                            ),
+                            league_id=match["league_id"],
+                            pair_a_name=match["pair_a_name"],
+                            pair_b_name=match["pair_b_name"],
+                            score=score,
+                            winner_name=winner_name,
+                            player_pair_name=player["pair_name"],
+                            player_won=player_won,
+                        )
+                    )
+
+                    try:
+                        send_email(
+                            to_email=email,
+                            subject=(
+                                f"Resultado registrado: "
+                                f"{match['pair_a_name']} vs "
+                                f"{match['pair_b_name']}"
+                            ),
+                            html=html,
+                            text=text,
+                        )
+
+                        emails_sent += 1
+
+                    except Exception as exc:
+                        print(
+                            "Error enviando resultado de liga "
+                            f"match={match_id} "
+                            f"player={player['id']} "
+                            f"email={email}: "
+                            f"{type(exc).__name__}: {exc}"
+                        )
+
+                        email_errors.append(
+                            {
+                                "player_id": player["id"],
+                                "player_name": player["name"],
+                                "email": email,
+                                "error": str(exc),
+                            }
+                        )
+
+            return {
+                "message": "Resultado guardado correctamente",
+                "match": updated_match,
+                "notification": {
+                    "sent": not was_already_completed,
+                    "emails_sent": emails_sent,
+                    "players_without_email": (
+                        players_without_email
+                    ),
+                    "errors": email_errors,
+                },
+            }
 
 @app.get("/leagues/{league_id}/standings")
 def get_league_standings(league_id: int):
@@ -4183,6 +4420,134 @@ def league_welcome_email_template(
     )
 
     return html, text
+
+def league_match_result_email_template(
+    player_name: str,
+    league_name: str,
+    club_name: str,
+    league_id: int,
+    pair_a_name: str,
+    pair_b_name: str,
+    score: str,
+    winner_name: str,
+    player_pair_name: str,
+    player_won: bool,
+):
+    league_url = f"{FRONTEND_URL}/league-public.html?id={league_id}"
+    dashboard_url = f"{FRONTEND_URL}/player-dashboard.html"
+
+    result_title = "¡Victoria!" if player_won else "Resultado registrado"
+    result_message = (
+        "Tu pareja ganó este partido."
+        if player_won
+        else "El resultado de tu partido ya fue registrado."
+    )
+
+    html = f"""
+    <div style="
+        font-family:Arial,sans-serif;
+        max-width:620px;
+        margin:auto;
+        padding:28px;
+        color:#111827;
+    ">
+      <div style="
+          background:#ffffff;
+          border:1px solid #e5e7eb;
+          border-radius:20px;
+          padding:28px;
+      ">
+        <h1 style="margin:0 0 8px;font-size:30px;">
+          {result_title}
+        </h1>
+
+        <div style="
+            width:55px;
+            height:5px;
+            background:#18a957;
+            border-radius:20px;
+            margin:14px 0 24px;
+        "></div>
+
+        <p>Hola <strong>{player_name}</strong>,</p>
+
+        <p>
+          {result_message}
+        </p>
+
+        <div style="
+            background:#f4f8f5;
+            border-radius:16px;
+            padding:20px;
+            margin:22px 0;
+        ">
+          <p style="margin:0 0 8px;">
+            <strong>Liga:</strong> {league_name}
+          </p>
+
+          <p style="margin:0 0 8px;">
+            <strong>Club:</strong> {club_name}
+          </p>
+
+          <p style="margin:0 0 8px;">
+            <strong>Partido:</strong>
+            {pair_a_name} vs {pair_b_name}
+          </p>
+
+          <p style="margin:0 0 8px;">
+            <strong>Resultado:</strong> {score}
+          </p>
+
+          <p style="margin:0 0 8px;">
+            <strong>Pareja ganadora:</strong> {winner_name}
+          </p>
+
+          <p style="margin:0;">
+            <strong>Tu pareja:</strong> {player_pair_name}
+          </p>
+        </div>
+
+        <p>
+          <a
+            href="{league_url}"
+            style="
+              display:inline-block;
+              background:#18a957;
+              color:white;
+              padding:13px 20px;
+              border-radius:12px;
+              text-decoration:none;
+              font-weight:bold;
+              margin-right:8px;
+            "
+          >
+            Ver la liga
+          </a>
+        </p>
+
+        <p style="margin-top:20px;color:#66736d;font-size:14px;">
+          También puedes revisar tus partidos y rating desde
+          <a href="{dashboard_url}">Mi PuntoRank</a>.
+        </p>
+      </div>
+    </div>
+    """
+
+    text = (
+        f"Hola {player_name}.\n"
+        f"{result_message}\n\n"
+        f"Liga: {league_name}\n"
+        f"Club: {club_name}\n"
+        f"Partido: {pair_a_name} vs {pair_b_name}\n"
+        f"Resultado: {score}\n"
+        f"Pareja ganadora: {winner_name}\n"
+        f"Tu pareja: {player_pair_name}\n\n"
+        f"Ver liga: {league_url}\n"
+        f"Mi PuntoRank: {dashboard_url}"
+    )
+
+    return html, text
+
 
 @app.post("/internal/email/test-template")
 def test_email_template(
