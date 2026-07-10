@@ -4185,8 +4185,8 @@ def test_email_template(
         )
 
     if not x_internal_key or not secrets.compare_digest(
-        x_internal_key,
-        expected_key,
+        x_internal_key.encode("utf-8"),
+        expected_key.encode("utf-8"),
     ):
         raise HTTPException(
             status_code=403,
