@@ -52,6 +52,7 @@ from app.services.r2_service import (
     process_profile_image,
     upload_player_photo,
 )
+from typing import Literal
 
 load_dotenv()
 
@@ -4657,8 +4658,9 @@ class ClubChangePassword(BaseModel):
 
 class ClubCredentialsEmailRequest(BaseModel):
     token: str
+    mode: Literal["club", "league", "player"]
     league_id: int | None = None
-
+    player_id: int | None = None
 
 class ClubLeagueWelcomeRequest(BaseModel):
     token: str
@@ -5068,89 +5070,260 @@ def test_email_template(
         "result": result,
     }
 
+def validate_club_league(
+    cur,
+    club_id: int,
+    league_id: int,
+):
+    cur.execute(
+        """
+        SELECT
+            id,
+            name,
+            club_id
+        FROM league_seasons
+        WHERE id = %s
+          AND club_id = %s;
+        """,
+        (
+            league_id,
+            club_id,
+        ),
+    )
+
+    league = cur.fetchone()
+
+    if not league:
+        raise HTTPException(
+            status_code=404,
+            detail="Liga no encontrada o no pertenece al club",
+        )
+
+    return league
+
+
+def get_club_credential_recipients(
+    cur,
+    club_id: int,
+):
+    cur.execute(
+        """
+        SELECT DISTINCT
+            p.id,
+            p.name,
+            p.email
+        FROM players p
+        LEFT JOIN player_clubs pc
+          ON pc.player_id = p.id
+        WHERE (
+            p.club_id = %s
+            OR pc.club_id = %s
+        )
+          AND p.email IS NOT NULL
+          AND BTRIM(p.email) <> ''
+        ORDER BY p.name;
+        """,
+        (
+            club_id,
+            club_id,
+        ),
+    )
+
+    return cur.fetchall()
+
+
+def get_league_credential_recipients(
+    cur,
+    club_id: int,
+    league_id: int,
+):
+    validate_club_league(
+        cur,
+        club_id,
+        league_id,
+    )
+
+    cur.execute(
+        """
+        SELECT DISTINCT
+            p.id,
+            p.name,
+            p.email
+        FROM league_pairs lp
+        JOIN players p
+          ON p.id IN (
+              lp.player_1_id,
+              lp.player_2_id
+          )
+        WHERE lp.league_id = %s
+          AND p.email IS NOT NULL
+          AND BTRIM(p.email) <> ''
+        ORDER BY p.name;
+        """,
+        (league_id,),
+    )
+
+    return cur.fetchall()
+
+
+def get_single_credential_recipient(
+    cur,
+    club_id: int,
+    player_id: int,
+):
+    cur.execute(
+        """
+        SELECT DISTINCT
+            p.id,
+            p.name,
+            p.email
+        FROM players p
+        LEFT JOIN player_clubs pc
+          ON pc.player_id = p.id
+        WHERE p.id = %s
+          AND p.email IS NOT NULL
+          AND BTRIM(p.email) <> ''
+          AND (
+              p.club_id = %s
+              OR pc.club_id = %s
+
+              OR EXISTS (
+                  SELECT 1
+                  FROM league_pairs lp
+                  JOIN league_seasons ls
+                    ON ls.id = lp.league_id
+                  WHERE ls.club_id = %s
+                    AND p.id IN (
+                        lp.player_1_id,
+                        lp.player_2_id
+                    )
+              )
+          )
+        LIMIT 1;
+        """,
+        (
+            player_id,
+            club_id,
+            club_id,
+            club_id,
+        ),
+    )
+
+    player = cur.fetchone()
+
+    if not player:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "Jugador no encontrado, no tiene correo "
+                "o no está relacionado con este club"
+            ),
+        )
+
+    return [player]
+
 
 @app.post("/club/communications/send-credentials")
-def send_club_player_credentials(data: ClubCredentialsEmailRequest):
+def send_club_player_credentials(
+    data: ClubCredentialsEmailRequest,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            club = get_authenticated_club(cur, data.token)
-
-            params = [club["id"], club["id"]]
-
-            league_filter = ""
-            league_join = ""
-
-            if data.league_id is not None:
-                cur.execute(
-                    """
-                    SELECT id
-                    FROM league_seasons
-                    WHERE id = %s
-                      AND club_id = %s;
-                    """,
-                    (data.league_id, club["id"]),
-                )
-
-                if not cur.fetchone():
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Liga no encontrada o no pertenece al club",
-                    )
-
-                league_join = """
-                    JOIN league_pairs lp
-                      ON p.id IN (lp.player_1_id, lp.player_2_id)
-                """
-
-                league_filter = "AND lp.league_id = %s"
-                params.append(data.league_id)
-
-            cur.execute(
-                f"""
-                SELECT DISTINCT
-                    p.id,
-                    p.name,
-                    p.email
-                FROM players p
-                LEFT JOIN player_clubs pc
-                  ON pc.player_id = p.id
-                {league_join}
-                WHERE (
-                    p.club_id = %s
-                    OR pc.club_id = %s
-                )
-                {league_filter}
-                  AND p.email IS NOT NULL
-                  AND BTRIM(p.email) <> ''
-                ORDER BY p.name;
-                """,
-                params,
+            club = get_authenticated_club(
+                cur,
+                data.token,
             )
 
-            players = cur.fetchall()
+            if data.mode == "club":
+                players = get_club_credential_recipients(
+                    cur,
+                    club["id"],
+                )
+
+                target_description = (
+                    f"jugadores del club {club['name']}"
+                )
+
+            elif data.mode == "league":
+                if data.league_id is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Debes indicar league_id "
+                            "para el modo league"
+                        ),
+                    )
+
+                league = validate_club_league(
+                    cur,
+                    club["id"],
+                    data.league_id,
+                )
+
+                players = get_league_credential_recipients(
+                    cur,
+                    club["id"],
+                    data.league_id,
+                )
+
+                target_description = (
+                    f"participantes de {league['name']}"
+                )
+
+            elif data.mode == "player":
+                if data.player_id is None:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Debes indicar player_id "
+                            "para el modo player"
+                        ),
+                    )
+
+                players = get_single_credential_recipient(
+                    cur,
+                    club["id"],
+                    data.player_id,
+                )
+
+                target_description = (
+                    f"jugador/a {players[0]['name']}"
+                )
+
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Modo de envío no válido",
+                )
 
             if not players:
                 raise HTTPException(
                     status_code=400,
-                    detail="No se encontraron jugadores con correo",
+                    detail=(
+                        "No se encontraron jugadores "
+                        "con correo para este envío"
+                    ),
                 )
 
             sent = 0
             errors = []
 
             for player in players:
-                temporary_password = secrets.token_urlsafe(8)
+                email = player["email"].strip()
+                temporary_password = (
+                    secrets.token_urlsafe(8)
+                )
 
                 html, text = credentials_email_template(
                     player_name=player["name"],
-                    email=player["email"],
+                    email=email,
                     temporary_password=temporary_password,
                     club_name=club["name"],
                 )
 
                 try:
                     send_email(
-                        to_email=player["email"],
+                        to_email=email,
                         subject="Tu acceso a PuntoRank",
                         html=html,
                         text=text,
@@ -5166,7 +5339,9 @@ def send_club_player_credentials(data: ClubCredentialsEmailRequest):
                         WHERE id = %s;
                         """,
                         (
-                            hash_password(temporary_password),
+                            hash_password(
+                                temporary_password
+                            ),
                             player["id"],
                         ),
                     )
@@ -5177,21 +5352,82 @@ def send_club_player_credentials(data: ClubCredentialsEmailRequest):
                 except Exception as exc:
                     conn.rollback()
 
+                    print(
+                        "Error enviando credenciales "
+                        f"player={player['id']} "
+                        f"email={email}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+
                     errors.append(
                         {
                             "player_id": player["id"],
-                            "email": player["email"],
+                            "player_name": player["name"],
+                            "email": email,
                             "error": str(exc),
                         }
                     )
 
             return {
-                "message": "Proceso de credenciales finalizado",
+                "message": (
+                    "Proceso de credenciales finalizado"
+                ),
+                "mode": data.mode,
+                "target": target_description,
                 "players_found": len(players),
                 "emails_sent": sent,
                 "errors_count": len(errors),
                 "errors": errors,
             }
+
+@app.get("/club/communications/eligible-players")
+def get_communication_eligible_players(
+    token: str,
+):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(
+                cur,
+                token,
+            )
+
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.email
+                FROM players p
+                LEFT JOIN player_clubs pc
+                  ON pc.player_id = p.id
+                WHERE p.email IS NOT NULL
+                  AND BTRIM(p.email) <> ''
+                  AND (
+                      p.club_id = %s
+                      OR pc.club_id = %s
+
+                      OR EXISTS (
+                          SELECT 1
+                          FROM league_pairs lp
+                          JOIN league_seasons ls
+                            ON ls.id = lp.league_id
+                          WHERE ls.club_id = %s
+                            AND p.id IN (
+                                lp.player_1_id,
+                                lp.player_2_id
+                            )
+                      )
+                  )
+                ORDER BY p.name;
+                """,
+                (
+                    club["id"],
+                    club["id"],
+                    club["id"],
+                ),
+            )
+
+            return cur.fetchall()
 
 @app.post("/club/communications/send-league-welcome")
 def send_league_welcome(data: ClubLeagueWelcomeRequest):

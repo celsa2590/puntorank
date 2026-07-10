@@ -131,10 +131,43 @@
         contraseña temporal y exige cambiarla al ingresar.
       </div>
 
-      <label for="credentialsLeague">Destinatarios</label>
-      <select id="credentialsLeague">
-        <option value="">Todos los jugadores/as del club</option>
+      <label for="credentialsMode">Destinatarios</label>
+
+      <select
+        id="credentialsMode"
+        onchange="updateCredentialFields()"
+      >
+        <option value="club">
+          Todos los jugadores/as del club
+        </option>
+
+        <option value="league">
+          Participantes de una liga
+        </option>
+
+        <option value="player">
+          Un jugador/a específico
+        </option>
       </select>
+
+      <div id="leagueCredentialField" style="display:none;">
+        <label for="credentialsLeague">Liga</label>
+
+        <select id="credentialsLeague">
+          <option value="">Selecciona una liga</option>
+        </select>
+      </div>
+
+      <div id="playerCredentialField" style="display:none;">
+        <label for="credentialsPlayer">
+          Jugador/a
+        </label>
+
+        <select id="credentialsPlayer">
+          <option value="">Cargando jugadores...</option>
+        </select>
+      </div>
+
 
       <button id="credentialsButton" onclick="sendCredentials()">
         Enviar credenciales
@@ -230,6 +263,65 @@ function getDetail(result, fallback) {
   return fallback;
 }
 
+function updateCredentialFields() {
+  const mode =
+    document.getElementById("credentialsMode").value;
+
+  document.getElementById(
+    "leagueCredentialField"
+  ).style.display =
+    mode === "league" ? "block" : "none";
+
+  document.getElementById(
+    "playerCredentialField"
+  ).style.display =
+    mode === "player" ? "block" : "none";
+}
+
+async function loadEligiblePlayers() {
+  const select =
+    document.getElementById("credentialsPlayer");
+
+  try {
+    const response = await fetch(
+      `${API_URL}/club/communications/eligible-players` +
+      `?token=${encodeURIComponent(token)}`
+    );
+
+    const players = await response.json();
+
+    if (!response.ok) {
+      select.innerHTML =
+        `<option value="">No se pudieron cargar</option>`;
+      return;
+    }
+
+    if (!players.length) {
+      select.innerHTML =
+        `<option value="">No hay jugadores disponibles</option>`;
+      return;
+    }
+
+    select.innerHTML = `
+      <option value="">Selecciona un jugador/a</option>
+      ${players.map(player => `
+        <option value="${player.id}">
+          ${player.name} · ${player.email}
+        </option>
+      `).join("")}
+    `;
+
+  } catch (error) {
+    console.error(error);
+
+    select.innerHTML =
+      `<option value="">Error de conexión</option>`;
+  }
+}
+
+
+
+
 async function loadActiveLeagues() {
   const credentialsSelect = document.getElementById("credentialsLeague");
   const welcomeSelect = document.getElementById("welcomeLeague");
@@ -280,17 +372,61 @@ async function loadActiveLeagues() {
 }
 
 async function sendCredentials() {
-  const button = document.getElementById("credentialsButton");
-  const leagueValue = document.getElementById("credentialsLeague").value;
-  const leagueId = leagueValue ? Number(leagueValue) : null;
+  const button =
+    document.getElementById("credentialsButton");
 
-  const scopeText = leagueId
-    ? "las personas inscritas en esta liga"
-    : "todos los jugadores/as del club";
+  const mode =
+    document.getElementById("credentialsMode").value;
+
+  const leagueValue =
+    document.getElementById("credentialsLeague").value;
+
+  const playerValue =
+    document.getElementById("credentialsPlayer").value;
+
+  if (mode === "league" && !leagueValue) {
+    setStatus(
+      "credentialsMessage",
+      "error",
+      "❌ Selecciona una liga"
+    );
+    return;
+  }
+
+  if (mode === "player" && !playerValue) {
+    setStatus(
+      "credentialsMessage",
+      "error",
+      "❌ Selecciona un jugador/a"
+    );
+    return;
+  }
+
+  let targetText =
+    "todos los jugadores/as del club";
+
+  if (mode === "league") {
+    targetText =
+      document
+        .getElementById("credentialsLeague")
+        .selectedOptions[0]
+        .textContent
+        .trim();
+  }
+
+  if (mode === "player") {
+    targetText =
+      document
+        .getElementById("credentialsPlayer")
+        .selectedOptions[0]
+        .textContent
+        .trim();
+  }
 
   const confirmed = confirm(
-    `¿Enviar credenciales a ${scopeText}?\n\n` +
-    "Se generará una contraseña temporal nueva y deberán cambiarla al ingresar."
+    `¿Enviar credenciales a ${targetText}?\n\n` +
+    "La contraseña actual será reemplazada por una " +
+    "contraseña temporal y deberán cambiarla al ingresar."
   );
 
   if (!confirmed) {
@@ -298,17 +434,32 @@ async function sendCredentials() {
   }
 
   button.disabled = true;
-  setStatus("credentialsMessage", "loading", "Enviando credenciales...");
+
+  setStatus(
+    "credentialsMessage",
+    "loading",
+    "Enviando credenciales..."
+  );
 
   try {
     const response = await fetch(
       `${API_URL}/club/communications/send-credentials`,
       {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({
           token,
-          league_id: leagueId
+          mode,
+          league_id:
+            mode === "league"
+              ? Number(leagueValue)
+              : null,
+          player_id:
+            mode === "player"
+              ? Number(playerValue)
+              : null
         })
       }
     );
@@ -319,38 +470,57 @@ async function sendCredentials() {
       setStatus(
         "credentialsMessage",
         "error",
-        `❌ ${getDetail(result, "No se pudieron enviar las credenciales")}`
+        `❌ ${getDetail(
+          result,
+          "No se pudieron enviar las credenciales"
+        )}`
       );
       return;
     }
 
-    const errors = Array.isArray(result.errors) ? result.errors : [];
+    const errors =
+      Array.isArray(result.errors)
+        ? result.errors
+        : [];
+
     let text =
       `✅ Proceso finalizado\n` +
+      `Destino: ${result.target || "-"}\n` +
       `Jugadores encontrados: ${result.players_found || 0}\n` +
       `Correos enviados: ${result.emails_sent || 0}\n` +
-      `Errores: ${result.errors_count ?? errors.length}`;
+      `Errores: ${result.errors_count || 0}`;
 
     if (errors.length) {
-      text += "\n\nDetalle de errores:\n" +
+      text +=
+        "\n\nDetalle de errores:\n" +
         errors.map(error =>
-          `• ${error.email || `Jugador ${error.player_id}`}: ${error.error}`
+          `• ${error.player_name || error.email}: ` +
+          `${error.error}`
         ).join("\n");
     }
 
-    setStatus("credentialsMessage", "success", text);
+    setStatus(
+      "credentialsMessage",
+      "success",
+      text
+    );
 
   } catch (error) {
     console.error(error);
+
     setStatus(
       "credentialsMessage",
       "error",
       "❌ No fue posible conectar con PuntoRank"
     );
+
   } finally {
     button.disabled = false;
   }
 }
+
+
+
 
 async function sendLeagueWelcome() {
   const button = document.getElementById("welcomeButton");
@@ -434,7 +604,8 @@ async function sendLeagueWelcome() {
     button.disabled = false;
   }
 }
-
+updateCredentialFields();
+loadEligiblePlayers();
 loadActiveLeagues();
 </script>
 </body>
