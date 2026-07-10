@@ -4175,7 +4175,7 @@ def league_welcome_email_template(
 def test_email_template(
     data: InternalTemplateTestRequest,
     x_internal_key: str | None = Header(default=None),
-
+):
     expected_key = os.getenv("INTERNAL_EMAIL_TEST_KEY")
 
     if not expected_key:
@@ -4188,9 +4188,19 @@ def test_email_template(
         x_internal_key,
         expected_key,
     ):
-        raise HTTPException(status_code=403, detail="Acceso denegado")
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso denegado",
+        )
 
+    email = data.to_email.strip()
     template = data.template.strip().lower()
+
+    if not email:
+        raise HTTPException(
+            status_code=400,
+            detail="Debes indicar to_email",
+        )
 
     if template == "credentials":
         html, text = credentials_email_template(
@@ -4216,12 +4226,23 @@ def test_email_template(
             detail="Plantilla no válida. Usa credentials o league_welcome",
         )
 
-    result = send_email(
-        to_email=email,
-        subject=subject,
-        html=html,
-        text=text,
-    )
+    try:
+        result = send_email(
+            to_email=email,
+            subject=subject,
+            html=html,
+            text=text,
+        )
+    except Exception as exc:
+        print(
+            f"Error enviando plantilla {template} "
+            f"a {email}: {type(exc).__name__}: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"No se pudo enviar el correo: {str(exc)}",
+        ) from exc
 
     return {
         "message": "Correo de prueba enviado",
@@ -4229,6 +4250,7 @@ def test_email_template(
         "to_email": email,
         "result": result,
     }
+
 
 @app.post("/club/communications/send-credentials")
 def send_club_player_credentials(data: ClubCredentialsEmailRequest):
