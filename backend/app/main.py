@@ -5,7 +5,6 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 from psycopg2.extras import RealDictCursor
-from fastapi import FastAPI, HTTPException
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from app.services.email_service import send_email
@@ -38,6 +37,9 @@ from app.services.match_service import (
     requires_confirmation,
 )
 from app.routers.matches import router as matches_router
+from fastapi import FastAPI, HTTPException, Header
+from pydantic import BaseModel, EmailStr
+
 
 load_dotenv()
 
@@ -3974,6 +3976,24 @@ class ClubChangePassword(BaseModel):
     current_password: str
     new_password: str
 
+class ClubCredentialsEmailRequest(BaseModel):
+    token: str
+    league_id: int | None = None
+
+
+class ClubLeagueWelcomeRequest(BaseModel):
+    token: str
+    league_id: int
+
+
+class InternalTemplateTestRequest(BaseModel):
+    to_email: EmailStr
+    template: str
+    player_name: str = "Celsa Sánchez"
+    temporary_password: str = "Prueba123"
+    league_name: str = "Liga A/B Invierno 2026"
+    club_name: str = "Arena Padel"
+
 @app.post("/club/change-password")
 def club_change_password(data: ClubChangePassword):
     with get_conn() as conn:
@@ -4019,6 +4039,428 @@ def club_change_password(data: ClubChangePassword):
             conn.commit()
 
             return {"message": "Contraseña actualizada correctamente"}
+
+def get_authenticated_club(cur, token: str):
+    if not token:
+        raise HTTPException(status_code=401, detail="Token de club requerido")
+
+    cur.execute(
+        """
+        SELECT
+            c.id,
+            c.name,
+            c.logo_url,
+            c.username
+        FROM club_sessions cs
+        JOIN clubs c ON c.id = cs.club_id
+        WHERE cs.session_token = %s
+          AND cs.expires_at > NOW();
+        """,
+        (token,),
+    )
+
+    club = cur.fetchone()
+
+    if not club:
+        raise HTTPException(
+            status_code=401,
+            detail="Sesión de club inválida o expirada",
+        )
+
+    return club
+
+def credentials_email_template(
+    player_name: str,
+    email: str,
+    temporary_password: str,
+    club_name: str,
+):
+    login_url = f"{FRONTEND_URL}/player-login.html"
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;color:#111827;">
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;padding:28px;">
+        <h1 style="margin:0 0 8px;font-size:30px;">Bienvenida/o a PuntoRank</h1>
+        <div style="width:55px;height:5px;background:#18a957;border-radius:20px;margin:14px 0 24px;"></div>
+
+        <p>Hola <strong>{player_name}</strong>,</p>
+
+        <p>
+          <strong>{club_name}</strong> creó tu acceso a PuntoRank.
+          Desde tu cuenta podrás revisar tus ligas, partidos, resultados y rating.
+        </p>
+
+        <div style="background:#f4f8f5;border-radius:16px;padding:18px;margin:22px 0;">
+          <p style="margin:0 0 10px;"><strong>Usuario:</strong> {email}</p>
+          <p style="margin:0;"><strong>Contraseña temporal:</strong> {temporary_password}</p>
+        </div>
+
+        <p>
+          <a href="{login_url}"
+             style="display:inline-block;background:#18a957;color:white;padding:13px 20px;border-radius:12px;text-decoration:none;font-weight:bold;">
+            Ingresar a PuntoRank
+          </a>
+        </p>
+
+        <p style="color:#66736d;font-size:14px;margin-top:24px;">
+          Por seguridad, cambia tu contraseña después de ingresar.
+        </p>
+      </div>
+    </div>
+    """
+
+    text = (
+        f"Hola {player_name}. {club_name} creó tu acceso a PuntoRank.\n"
+        f"Usuario: {email}\n"
+        f"Contraseña temporal: {temporary_password}\n"
+        f"Ingreso: {login_url}\n"
+        "Cambia tu contraseña después de ingresar."
+    )
+
+    return html, text
+
+
+def league_welcome_email_template(
+    player_name: str,
+    league_name: str,
+    club_name: str,
+    league_id: int,
+):
+    league_url = f"{FRONTEND_URL}/league-public.html?id={league_id}"
+    dashboard_url = f"{FRONTEND_URL}/player-dashboard.html"
+
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;color:#111827;">
+      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;padding:28px;">
+        <h1 style="margin:0 0 8px;font-size:30px;">¡Bienvenida/o a la liga!</h1>
+        <div style="width:55px;height:5px;background:#18a957;border-radius:20px;margin:14px 0 24px;"></div>
+
+        <p>Hola <strong>{player_name}</strong>,</p>
+
+        <p>
+          Ya estás inscrita/o en <strong>{league_name}</strong>,
+          organizada por <strong>{club_name}</strong>.
+        </p>
+
+        <p>
+          En la página pública de la liga podrás revisar participantes,
+          tabla de posiciones, fixture, resultados y estadísticas.
+        </p>
+
+        <p>
+          <a href="{league_url}"
+             style="display:inline-block;background:#18a957;color:white;padding:13px 20px;border-radius:12px;text-decoration:none;font-weight:bold;margin-right:8px;">
+            Ver la liga
+          </a>
+        </p>
+
+        <p style="margin-top:20px;">
+          También puedes revisar tus próximos partidos desde
+          <a href="{dashboard_url}">Mi PuntoRank</a>.
+        </p>
+      </div>
+    </div>
+    """
+
+    text = (
+        f"Hola {player_name}. Ya estás inscrita/o en {league_name}, "
+        f"organizada por {club_name}.\n"
+        f"Ver liga: {league_url}\n"
+        f"Mi PuntoRank: {dashboard_url}"
+    )
+
+    return html, text
+
+@app.post("/internal/email/test-template")
+def test_email_template(
+    data: InternalTemplateTestRequest,
+    x_internal_key: str | None = Header(default=None),
+):
+    expected_key = os.getenv("INTERNAL_EMAIL_TEST_KEY")
+
+    if not expected_key:
+        raise HTTPException(
+            status_code=500,
+            detail="INTERNAL_EMAIL_TEST_KEY no está configurada",
+        )
+
+    if not x_internal_key or not secrets.compare_digest(
+        x_internal_key,
+        expected_key,
+    ):
+        raise HTTPException(status_code=403, detail="Acceso denegado")
+
+    template = data.template.strip().lower()
+
+    if template == "credentials":
+        html, text = credentials_email_template(
+            player_name=data.player_name,
+            email=str(data.to_email),
+            temporary_password=data.temporary_password,
+            club_name=data.club_name,
+        )
+        subject = "Tu acceso a PuntoRank"
+
+    elif template == "league_welcome":
+        html, text = league_welcome_email_template(
+            player_name=data.player_name,
+            league_name=data.league_name,
+            club_name=data.club_name,
+            league_id=3,
+        )
+        subject = f"Bienvenida/o a {data.league_name}"
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Plantilla no válida. Usa credentials o league_welcome",
+        )
+
+    result = send_email(
+        to_email=str(data.to_email),
+        subject=subject,
+        html=html,
+        text=text,
+    )
+
+    return {
+        "message": "Correo de prueba enviado",
+        "template": template,
+        "to_email": str(data.to_email),
+        "result": result,
+    }
+
+@app.post("/club/communications/send-credentials")
+def send_club_player_credentials(data: ClubCredentialsEmailRequest):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(cur, data.token)
+
+            params = [club["id"], club["id"]]
+
+            league_filter = ""
+            league_join = ""
+
+            if data.league_id is not None:
+                cur.execute(
+                    """
+                    SELECT id
+                    FROM league_seasons
+                    WHERE id = %s
+                      AND club_id = %s;
+                    """,
+                    (data.league_id, club["id"]),
+                )
+
+                if not cur.fetchone():
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Liga no encontrada o no pertenece al club",
+                    )
+
+                league_join = """
+                    JOIN league_pairs lp
+                      ON p.id IN (lp.player_1_id, lp.player_2_id)
+                """
+
+                league_filter = "AND lp.league_id = %s"
+                params.append(data.league_id)
+
+            cur.execute(
+                f"""
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.email
+                FROM players p
+                LEFT JOIN player_clubs pc
+                  ON pc.player_id = p.id
+                {league_join}
+                WHERE (
+                    p.club_id = %s
+                    OR pc.club_id = %s
+                )
+                {league_filter}
+                  AND p.email IS NOT NULL
+                  AND BTRIM(p.email) <> ''
+                ORDER BY p.name;
+                """,
+                params,
+            )
+
+            players = cur.fetchall()
+
+            if not players:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No se encontraron jugadores con correo",
+                )
+
+            sent = 0
+            errors = []
+
+            for player in players:
+                temporary_password = secrets.token_urlsafe(8)
+
+                cur.execute(
+                    """
+                    UPDATE players
+                    SET password_hash = %s
+                    WHERE id = %s;
+                    """,
+                    (
+                        hash_password(temporary_password),
+                        player["id"],
+                    ),
+                )
+
+                html, text = credentials_email_template(
+                    player_name=player["name"],
+                    email=player["email"],
+                    temporary_password=temporary_password,
+                    club_name=club["name"],
+                )
+
+                try:
+                    send_email(
+                        to_email=player["email"],
+                        subject="Tu acceso a PuntoRank",
+                        html=html,
+                        text=text,
+                    )
+                    sent += 1
+                except Exception as exc:
+                    errors.append(
+                        {
+                            "player_id": player["id"],
+                            "email": player["email"],
+                            "error": str(exc),
+                        }
+                    )
+
+            conn.commit()
+
+            return {
+                "message": "Proceso de credenciales finalizado",
+                "players_found": len(players),
+                "emails_sent": sent,
+                "errors": errors,
+            }
+
+@app.post("/club/communications/send-league-welcome")
+def send_league_welcome(data: ClubLeagueWelcomeRequest):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(cur, data.token)
+
+            cur.execute(
+                """
+                SELECT
+                    ls.id,
+                    ls.name,
+                    ls.club_id,
+                    c.name AS club_name
+                FROM league_seasons ls
+                JOIN clubs c ON c.id = ls.club_id
+                WHERE ls.id = %s
+                  AND ls.club_id = %s;
+                """,
+                (data.league_id, club["id"]),
+            )
+
+            league = cur.fetchone()
+
+            if not league:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada o no pertenece al club",
+                )
+
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    p.id,
+                    p.name,
+                    p.email
+                FROM league_pairs lp
+                JOIN players p
+                  ON p.id IN (lp.player_1_id, lp.player_2_id)
+                WHERE lp.league_id = %s
+                  AND p.email IS NOT NULL
+                  AND BTRIM(p.email) <> ''
+                ORDER BY p.name;
+                """,
+                (data.league_id,),
+            )
+
+            players = cur.fetchall()
+
+            if not players:
+                raise HTTPException(
+                    status_code=400,
+                    detail="La liga no tiene participantes con correo",
+                )
+
+            sent = 0
+            errors = []
+
+            for player in players:
+                html, text = league_welcome_email_template(
+                    player_name=player["name"],
+                    league_name=league["name"],
+                    club_name=league["club_name"],
+                    league_id=league["id"],
+                )
+
+                try:
+                    send_email(
+                        to_email=player["email"],
+                        subject=f"Bienvenida/o a {league['name']}",
+                        html=html,
+                        text=text,
+                    )
+                    sent += 1
+                except Exception as exc:
+                    errors.append(
+                        {
+                            "player_id": player["id"],
+                            "email": player["email"],
+                            "error": str(exc),
+                        }
+                    )
+
+            return {
+                "message": "Bienvenida de liga procesada",
+                "league_id": league["id"],
+                "league_name": league["name"],
+                "players_found": len(players),
+                "emails_sent": sent,
+                "errors": errors,
+            }
+
+@app.get("/club/communications/active-leagues")
+def get_communication_active_leagues(token: str):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            club = get_authenticated_club(cur, token)
+
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    name,
+                    category,
+                    gender,
+                    status
+                FROM league_seasons
+                WHERE club_id = %s
+                  AND status <> 'completed'
+                ORDER BY created_at DESC;
+                """,
+                (club["id"],),
+            )
+
+            return cur.fetchall()
 
 @app.post("/player/register")
 def player_account_register(data: PlayerAccountRegister):
