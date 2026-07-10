@@ -1894,7 +1894,8 @@ def get_league_matches(league_id: int):
                     lm.score,
                     lm.status,
                     lm.played_at,
-
+                    lm.pair_a_used_substitute,
+                    lm.pair_b_used_substitute,
                     pa.id AS pair_a_id,
                     COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
 
@@ -2221,6 +2222,8 @@ def save_league_match_result(
                     winner_pair_id = %s,
                     pair_a_sets_won = %s,
                     pair_b_sets_won = %s,
+                    pair_a_used_substitute = %s,
+                    pair_b_used_substitute = %s,
                     status = 'completed',
                     played_at = COALESCE(played_at, NOW())
                 WHERE id = %s
@@ -2231,6 +2234,8 @@ def save_league_match_result(
                     data.winner_pair_id,
                     sets_a,
                     sets_b,
+                    data.pair_a_used_substitute,
+                    data.pair_b_used_substitute,
                     match_id,
                 ),
             )
@@ -2430,7 +2435,7 @@ def get_league_standings(league_id: int):
                 """
                 SELECT
                     lp.id AS pair_id,
-
+                    lp.points_adjustment,
                     COALESCE(
                         lp.pair_name,
                         p1.name || ' / ' || p2.name
@@ -2491,7 +2496,9 @@ def get_league_standings(league_id: int):
                             END
                         ),
                         0
-                    ) AS points,
+                    )
+                    + lp.points_adjustment
+                    AS points,
 
                     COALESCE(
                         SUM(
@@ -2554,6 +2561,7 @@ def get_league_standings(league_id: int):
                 GROUP BY
                     lp.id,
                     lp.pair_name,
+                    lp.points_adjustment,
                     p1.name,
                     p2.name,
                     ls.scoring_mode
@@ -2588,6 +2596,8 @@ def get_public_league_profile(league_id: int):
                     ls.start_date,
                     ls.end_date,
                     ls.scoring_mode,
+                    lm.pair_a_used_substitute,
+                    lm.pair_b_used_substitute,
                     c.name AS club_name,
                     c.logo_url AS club_logo_url
                 FROM league_seasons ls
@@ -2611,7 +2621,7 @@ def get_public_league_profile(league_id: int):
                 """
                 SELECT
                     lp.id AS pair_id,
-
+                    lp.points_adjustment,
                     COALESCE(
                         lp.group_name,
                         'Grupo único'
@@ -2660,7 +2670,7 @@ def get_public_league_profile(league_id: int):
                     ) AS group_name,
 
                     lp.id AS pair_id,
-
+                    lp.points_adjustment,
                     COALESCE(
                         lp.pair_name,
                         p1.name || ' / ' || p2.name
@@ -2725,7 +2735,9 @@ def get_public_league_profile(league_id: int):
                             END
                         ),
                         0
-                    ) AS points,
+                    )
+                    + lp.points_adjustment 
+                    AS points,
 
                     COALESCE(
                         SUM(
@@ -2799,6 +2811,7 @@ def get_public_league_profile(league_id: int):
                     lp.id,
                     lp.group_name,
                     lp.pair_name,
+                    lp.points_adjustment,
                     p1.name,
                     p2.name,
                     ls.scoring_mode

@@ -576,6 +576,27 @@ function renderMatchCard(m) {
         <div class="match-teams">
           ${m.pair_a_name} <span class="vs">vs</span> ${m.pair_b_name}
         </div>
+
+        <div style="margin-top:12px;">
+          <label style="display:flex;gap:8px;align-items:center;">
+            <input
+              type="checkbox"
+              id="substitute_a_${m.id}"
+              ${m.pair_a_used_substitute ? "checked" : ""}
+            >
+            ${m.pair_a_name} utilizó parche
+          </label>
+
+          <label style="display:flex;gap:8px;align-items:center;">
+            <input
+              type="checkbox"
+              id="substitute_b_${m.id}"
+              ${m.pair_b_used_substitute ? "checked" : ""}
+            >
+            ${m.pair_b_name} utilizó parche
+          </label>
+        </div>
+
         <div class="match-status">
           ${isCompleted ? `<span class="completed-pill">Completado</span>` : "Pendiente"}
           ${m.score ? ` · Resultado: ${m.score}` : " · Sin resultado"}
@@ -638,12 +659,24 @@ async function saveLeagueResult(matchId, winnerPairId) {
     return;
   }
 
+  const pairAUsedSubstitute =
+    document.getElementById(
+      `substitute_a_${matchId}`
+    )?.checked || false;
+
+  const pairBUsedSubstitute =
+    document.getElementById(
+      `substitute_b_${matchId}`
+    )?.checked || false;
+
   const response = await fetch(`${API_URL}/league-matches/${matchId}/result`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({
       score: score,
-      winner_pair_id: winnerPairId
+      winner_pair_id: winnerPairId,
+      pair_a_used_substitute: pairAUsedSubstitute,
+      pair_b_used_substitute: pairBUsedSubstitute
     })
   });
 

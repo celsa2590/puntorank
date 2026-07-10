@@ -74,10 +74,12 @@ class LeaguePairCreate(BaseModel):
     player_1_id: int
     player_2_id: int
     pair_name: str | None = None
+
 class LeagueMatchResult(BaseModel):
     score: str
     winner_pair_id: int
-
+    pair_a_used_substitute: bool = False
+    pair_b_used_substitute: bool = False
 
 class TournamentCreate(BaseModel):
     club_id: int
