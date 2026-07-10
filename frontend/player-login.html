@@ -2,31 +2,29 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PuntoRank - Ingreso jugador</title>
   <link rel="stylesheet" href="theme.css">
   <style>.auth-shell{max-width:480px;margin:0 auto;}</style>
 </head>
 <body>
-<div class="top-nav">
-  <a class="nav-icon" href="index.html">🏠 Inicio</a>
-  <button class="nav-icon" onclick="history.back()">← Volver</button>
-</div>
-
 <div class="auth-shell">
+  <a class="btn secondary" href="index.html">← Volver</a>
   <div class="brand" style="margin-top:24px;">Iniciar sesión</div>
   <div class="subtitle">Accede a tu cuenta para registrar partidos y ver tu evolución.</div>
 
   <div class="card">
     <form id="loginForm">
       <label>Email</label>
-      <input id="email" type="email" required placeholder="tu@email.com">
+      <input id="email" type="email" autocomplete="email" required placeholder="tu@email.com">
       <label>Clave</label>
-      <input id="password" type="password" required placeholder="Tu clave">
-      <button type="submit">Ingresar</button>
+      <input id="password" type="password" autocomplete="current-password" required placeholder="Tu clave">
+      <button id="submitButton" type="submit">Ingresar</button>
     </form>
-  <div style="margin-top:14px;">
-    <a href="player-forgot-password.html">¿Olvidaste tu contraseña?</a>
-  </div>
+
+    <div style="margin-top:14px;">
+      <a href="player-forgot-password.html">¿Olvidaste tu contraseña?</a>
+    </div>
 
     <div id="message" class="meta" style="margin-top:16px;"></div>
   </div>
@@ -40,7 +38,9 @@ const API_URL = "https://puntorank-backend.onrender.com";
 document.getElementById("loginForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const message = document.getElementById("message");
-  message.innerHTML = "Ingresando...";
+  const submitButton = document.getElementById("submitButton");
+  message.textContent = "Ingresando...";
+  submitButton.disabled = true;
 
   try {
     const response = await fetch(`${API_URL}/player/login`, {
@@ -55,13 +55,27 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
     const result = await response.json();
 
     if (!response.ok) {
-      message.innerHTML = `❌ ${result.detail || "No se pudo ingresar"}`;
+      message.textContent = `❌ ${result.detail || "No se pudo ingresar"}`;
       return;
     }
 
     localStorage.setItem("player_token", result.session.token);
-    localStorage.setItem("player_id", result.player.id);
+    localStorage.setItem("player_id", String(result.player.id));
     localStorage.setItem("player_name", result.player.name);
+
+    const mustChangePassword =
+      result.must_change_password === true ||
+      result.player?.must_change_password === true;
+
+    localStorage.setItem(
+      "player_must_change_password",
+      mustChangePassword ? "true" : "false"
+    );
+
+    if (mustChangePassword) {
+      window.location.href = "player-change-password.html";
+      return;
+    }
 
     const redirect = localStorage.getItem("after_login_redirect");
     if (redirect) {
@@ -72,7 +86,9 @@ document.getElementById("loginForm").addEventListener("submit", async (event) =>
     }
   } catch (error) {
     console.error(error);
-    message.innerHTML = "❌ No se pudo conectar con PuntoRank. Intenta nuevamente.";
+    message.textContent = "❌ No fue posible conectar con PuntoRank";
+  } finally {
+    submitButton.disabled = false;
   }
 });
 </script>

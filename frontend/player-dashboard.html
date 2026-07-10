@@ -74,7 +74,20 @@ async function loadDashboard() {
   const data = await response.json();
 
   if (!response.ok) {
+    const passwordChangeRequired =
+      response.status === 403 &&
+      data.detail?.code === "PASSWORD_CHANGE_REQUIRED";
+
+    if (passwordChangeRequired) {
+      localStorage.setItem("player_must_change_password", "true");
+      window.location.href = "player-change-password.html";
+      return;
+    }
+
     localStorage.removeItem("player_token");
+    localStorage.removeItem("player_id");
+    localStorage.removeItem("player_name");
+    localStorage.removeItem("player_must_change_password");
     window.location.href = "player-login.html";
     return;
   }

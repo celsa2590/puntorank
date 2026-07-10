@@ -37,6 +37,7 @@ from app.services.match_service import (
     requires_confirmation,
 )
 from app.routers.matches import router as matches_router
+from app.routers.player_password import router as player_password_router
 from fastapi import FastAPI, HTTPException, Header
 from pydantic import BaseModel
 
@@ -61,6 +62,7 @@ app.add_middleware(
 )
 
 app.include_router(matches_router)
+app.include_router(player_password_router)
 
 def get_or_create_player(cur, player_data, club_id: int):
     if player_data.player_id is not None:
@@ -3924,7 +3926,8 @@ def get_authenticated_player(cur, session_token: str):
             p.category,
             p.side,
             p.is_registered,
-            p.email_verified
+            p.email_verified,
+            p.must_change_password
         FROM player_sessions ps
         JOIN players p
             ON p.id = ps.player_id
@@ -3993,6 +3996,16 @@ class InternalTemplateTestRequest(BaseModel):
     temporary_password: str = "Prueba123"
     league_name: str = "Liga A/B Invierno 2026"
     club_name: str = "Arena Padel"
+
+def require_password_changed(player):
+    if player.get("must_change_password"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "PASSWORD_CHANGE_REQUIRED",
+                "message": "Debes cambiar tu contraseña temporal antes de continuar",
+            },
+        )
 
 @app.post("/club/change-password")
 def club_change_password(data: ClubChangePassword):
@@ -4324,18 +4337,6 @@ def send_club_player_credentials(data: ClubCredentialsEmailRequest):
             for player in players:
                 temporary_password = secrets.token_urlsafe(8)
 
-                cur.execute(
-                    """
-                    UPDATE players
-                    SET password_hash = %s
-                    WHERE id = %s;
-                    """,
-                    (
-                        hash_password(temporary_password),
-                        player["id"],
-                    ),
-                )
-
                 html, text = credentials_email_template(
                     player_name=player["name"],
                     email=player["email"],
@@ -4350,8 +4351,28 @@ def send_club_player_credentials(data: ClubCredentialsEmailRequest):
                         html=html,
                         text=text,
                     )
+
+                    cur.execute(
+                        """
+                        UPDATE players
+                        SET
+                            password_hash = %s,
+                            must_change_password = TRUE,
+                            is_registered = TRUE
+                        WHERE id = %s;
+                        """,
+                        (
+                            hash_password(temporary_password),
+                            player["id"],
+                        ),
+                    )
+
+                    conn.commit()
                     sent += 1
+
                 except Exception as exc:
+                    conn.rollback()
+
                     errors.append(
                         {
                             "player_id": player["id"],
@@ -4360,12 +4381,11 @@ def send_club_player_credentials(data: ClubCredentialsEmailRequest):
                         }
                     )
 
-            conn.commit()
-
             return {
                 "message": "Proceso de credenciales finalizado",
                 "players_found": len(players),
                 "emails_sent": sent,
+                "errors_count": len(errors),
                 "errors": errors,
             }
 
@@ -4587,6 +4607,7 @@ def player_account_register(data: PlayerAccountRegister):
                 "message": "Perfil creado correctamente",
             }
 
+
 @app.post("/player/login")
 def player_account_login(data: PlayerAccountLogin):
     email = data.email.strip().lower()
@@ -4605,6 +4626,7 @@ def player_account_login(data: PlayerAccountLogin):
                     side,
                     is_registered,
                     email_verified,
+                    must_change_password,
                     password_hash
                 FROM players
                 WHERE LOWER(email) = %s
@@ -4615,7 +4637,11 @@ def player_account_login(data: PlayerAccountLogin):
 
             player = cur.fetchone()
 
-            if not player or not verify_password(data.password, player["password_hash"]):
+            if (
+                not player
+                or not player["password_hash"]
+                or not verify_password(data.password, player["password_hash"])
+            ):
                 raise HTTPException(status_code=401, detail="Correo o clave incorrectos")
 
             cur.execute(
@@ -4628,15 +4654,14 @@ def player_account_login(data: PlayerAccountLogin):
             )
 
             session = create_player_session(cur, player["id"])
-
             safe_player = dict(player)
             safe_player.pop("password_hash", None)
-
             conn.commit()
 
             return {
                 "player": safe_player,
                 "session": session,
+                "must_change_password": bool(player["must_change_password"]),
             }
 
 
@@ -4691,7 +4716,7 @@ def player_forgot_password(data: PlayerForgotPassword):
 
                 notify_password_reset(
                     email=player["email"],
-                    token=raw_token,
+                    token=token,
                 )
 
             conn.commit()
@@ -4733,6 +4758,7 @@ def player_reset_password(data: PlayerResetPassword):
                 """
                 UPDATE players
                 SET password_hash = %s,
+                    must_change_password = FALSE,
                     password_reset_token = NULL,
                     password_reset_expires_at = NULL
                 WHERE id = %s;
@@ -4772,6 +4798,7 @@ def player_dashboard(token: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             player = get_authenticated_player(cur, token)
+            require_password_changed(player)
             player_id = player["id"]
 
             cur.execute(
