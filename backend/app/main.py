@@ -4176,7 +4176,7 @@ def get_authenticated_player(cur, session_token: str):
             p.side,
             p.is_registered,
             p.email_verified,
-            p.must_change_password
+            p.must_change_password,
             p.photo_url
         FROM player_sessions ps
         JOIN players p
