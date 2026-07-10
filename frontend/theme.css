@@ -537,3 +537,91 @@ img.club-logo.small,
     align-items: flex-start;
   }
 }
+/* ---------- Mobile hardening ---------- */
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+table {
+  max-width: 100%;
+}
+
+.top-nav {
+  flex-wrap: wrap;
+}
+
+.card,
+.profile-card,
+.history-card,
+.match-card,
+.ranking-card {
+  width: 100%;
+}
+
+@media (max-width: 700px) {
+  body {
+    padding: 14px;
+  }
+
+  .brand,
+  h1 {
+    font-size: clamp(28px, 9vw, 38px);
+  }
+
+  h2 {
+    font-size: 22px;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  .top-nav {
+    width: 100%;
+  }
+
+  .nav-icon {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+
+  .card,
+  .profile-card,
+  .history-card,
+  .match-card {
+    padding: 16px;
+  }
+
+  .actions,
+  .quick-actions,
+  .section-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions > *,
+  .quick-actions > *,
+  .section-actions > * {
+    width: 100%;
+  }
+
+  .tabs {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+  }
+
+  .tab,
+  .tab-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    width: auto;
+  }
+}
