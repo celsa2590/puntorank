@@ -900,7 +900,7 @@ async function saveLeagueSchedule(matchId) {
   }
 
   alert(`Programación guardada. Correos enviados: ${result.emails_sent || 0}`);
-  await loadLeagueMatches();
+  await refreshAll();
 }
 
 

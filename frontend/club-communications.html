@@ -2,32 +2,206 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Comunicaciones | PuntoRank</title>
   <link rel="stylesheet" href="theme.css">
+
+  <style>
+    .communications-shell {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+
+    .communications-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .communication-card {
+      background: rgba(255,255,255,0.78);
+      border: 1px solid rgba(15, 23, 42, 0.08);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+    }
+
+    .communication-card h2 {
+      margin-top: 0;
+      margin-bottom: 8px;
+    }
+
+    .communication-icon {
+      font-size: 34px;
+      margin-bottom: 10px;
+    }
+
+    .status-box {
+      margin-top: 14px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      display: none;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .status-box.loading {
+      display: block;
+      background: #f3f4f6;
+      color: #374151;
+      border: 1px solid #e5e7eb;
+    }
+
+    .status-box.success {
+      display: block;
+      background: #ecfdf3;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+
+    .status-box.error {
+      display: block;
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .warning-box {
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fed7aa;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 14px 0;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .info-box {
+      background: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin: 14px 0;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .secondary-link {
+      display: inline-block;
+      margin-top: 10px;
+      text-decoration: none;
+      font-weight: 800;
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
+
 <body>
 <div class="top-nav">
   <a class="nav-icon" href="club-dashboard.html">← Volver</a>
   <a class="nav-icon" href="index.html">🏠 Inicio</a>
 </div>
 
-<h1>Comunicaciones</h1>
-<p class="subtitle">Envía correos a jugadores/as del club.</p>
+<div class="communications-shell">
+  <h1>Comunicaciones</h1>
+  <p class="subtitle">
+    Envía credenciales, bienvenidas y revisa las notificaciones automáticas del club.
+  </p>
 
-<div class="card">
-  <h2>Enviar credenciales</h2>
+  <div class="communications-grid">
 
-  <label>Modo</label>
-  <select id="credentialsMode">
-    <option value="test">Solo correo de prueba</option>
-    <option value="club">Todos los jugadores del club</option>
-  </select>
+    <section class="communication-card">
+      <div class="communication-icon">🔐</div>
+      <h2>Enviar credenciales</h2>
 
-  <label>Correo de prueba</label>
-  <input id="testEmail" type="email" placeholder="tu-correo@gmail.com">
+      <p class="meta">
+        Genera una contraseña temporal para cada jugador/a del club y envía
+        el acceso por correo.
+      </p>
 
-  <button onclick="sendCredentials()">Enviar credenciales</button>
-  <div id="credentialsMessage" class="message"></div>
+      <div class="warning-box">
+        Esta acción reemplaza la contraseña actual de cada jugador/a con una
+        contraseña temporal y exige cambiarla al ingresar.
+      </div>
+
+      <label for="credentialsLeague">Destinatarios</label>
+      <select id="credentialsLeague">
+        <option value="">Todos los jugadores/as del club</option>
+      </select>
+
+      <button id="credentialsButton" onclick="sendCredentials()">
+        Enviar credenciales
+      </button>
+
+      <div id="credentialsMessage" class="status-box"></div>
+    </section>
+
+    <section class="communication-card">
+      <div class="communication-icon">🎉</div>
+      <h2>Bienvenida a una liga</h2>
+
+      <p class="meta">
+        Envía un correo de bienvenida a todas las personas inscritas en una liga.
+      </p>
+
+      <label for="welcomeLeague">Liga</label>
+      <select id="welcomeLeague">
+        <option value="">Cargando ligas...</option>
+      </select>
+
+      <button id="welcomeButton" onclick="sendLeagueWelcome()">
+        Enviar bienvenida
+      </button>
+
+      <div id="welcomeMessage" class="status-box"></div>
+    </section>
+
+    <section class="communication-card">
+      <div class="communication-icon">🗓️</div>
+      <h2>Cambios de fecha, hora o cancha</h2>
+
+      <p class="meta">
+        Esta notificación se envía desde la administración de cada partido.
+      </p>
+
+      <div class="info-box">
+        En la vista de la liga, abre la pestaña <strong>Partidos</strong>,
+        modifica fecha, hora o cancha, marca
+        <strong>“Notificar jugadores por correo”</strong> y guarda la programación.
+      </div>
+
+      <a class="secondary-link" href="leagues.html">
+        Ir a ligas →
+      </a>
+    </section>
+
+    <section class="communication-card">
+      <div class="communication-icon">🏆</div>
+      <h2>Resultados de partidos</h2>
+
+      <p class="meta">
+        Próximamente se enviará automáticamente un correo a los cuatro
+        jugadores cuando el club cargue el resultado.
+      </p>
+
+      <div class="info-box">
+        El correo incluirá liga, parejas, marcador, pareja ganadora y enlace
+        al detalle del torneo o liga.
+      </div>
+
+      <button disabled>
+        Próximamente
+      </button>
+    </section>
+
+  </div>
 </div>
 
 <script>
@@ -38,38 +212,230 @@ if (!token) {
   window.location.href = "club-login.html";
 }
 
-async function sendCredentials() {
-  const mode = document.getElementById("credentialsMode").value;
-  const testEmail = document.getElementById("testEmail").value.trim();
-  const message = document.getElementById("credentialsMessage");
-
-  message.innerHTML = "Enviando...";
-
-  if (mode === "test" && !testEmail) {
-    message.innerHTML = "❌ Ingresa un correo de prueba.";
-    return;
-  }
-
-  const response = await fetch(`${API_URL}/club/players/send-credentials`, {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      token,
-      mode,
-      test_email: testEmail || null,
-      reset_passwords: true
-    })
-  });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    message.innerHTML = `❌ ${result.detail || "No se pudo enviar."}`;
-    return;
-  }
-
-  message.innerHTML = `✅ Correos enviados: ${result.emails_sent || 0}. Sin correo: ${result.players_without_email || 0}.`;
+function setStatus(elementId, type, text) {
+  const element = document.getElementById(elementId);
+  element.className = `status-box ${type}`;
+  element.textContent = text;
 }
+
+function getDetail(result, fallback) {
+  if (typeof result?.detail === "string") {
+    return result.detail;
+  }
+
+  if (result?.detail?.message) {
+    return result.detail.message;
+  }
+
+  return fallback;
+}
+
+async function loadActiveLeagues() {
+  const credentialsSelect = document.getElementById("credentialsLeague");
+  const welcomeSelect = document.getElementById("welcomeLeague");
+
+  try {
+    const response = await fetch(
+      `${API_URL}/club/communications/active-leagues?token=${encodeURIComponent(token)}`
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      const message = getDetail(result, "No se pudieron cargar las ligas");
+      credentialsSelect.innerHTML =
+        `<option value="">Todos los jugadores/as del club</option>`;
+      welcomeSelect.innerHTML =
+        `<option value="">${message}</option>`;
+      return;
+    }
+
+    credentialsSelect.innerHTML = `
+      <option value="">Todos los jugadores/as del club</option>
+      ${result.map(league => `
+        <option value="${league.id}">
+          Solo ${league.name} · ${league.category || "-"} · ${league.gender || "-"}
+        </option>
+      `).join("")}
+    `;
+
+    if (!result.length) {
+      welcomeSelect.innerHTML =
+        `<option value="">No hay ligas activas</option>`;
+      document.getElementById("welcomeButton").disabled = true;
+      return;
+    }
+
+    welcomeSelect.innerHTML = result.map(league => `
+      <option value="${league.id}">
+        ${league.name} · ${league.category || "-"} · ${league.gender || "-"}
+      </option>
+    `).join("");
+
+  } catch (error) {
+    console.error(error);
+    welcomeSelect.innerHTML =
+      `<option value="">Error de conexión</option>`;
+  }
+}
+
+async function sendCredentials() {
+  const button = document.getElementById("credentialsButton");
+  const leagueValue = document.getElementById("credentialsLeague").value;
+  const leagueId = leagueValue ? Number(leagueValue) : null;
+
+  const scopeText = leagueId
+    ? "las personas inscritas en esta liga"
+    : "todos los jugadores/as del club";
+
+  const confirmed = confirm(
+    `¿Enviar credenciales a ${scopeText}?\n\n` +
+    "Se generará una contraseña temporal nueva y deberán cambiarla al ingresar."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  button.disabled = true;
+  setStatus("credentialsMessage", "loading", "Enviando credenciales...");
+
+  try {
+    const response = await fetch(
+      `${API_URL}/club/communications/send-credentials`,
+      {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          token,
+          league_id: leagueId
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setStatus(
+        "credentialsMessage",
+        "error",
+        `❌ ${getDetail(result, "No se pudieron enviar las credenciales")}`
+      );
+      return;
+    }
+
+    const errors = Array.isArray(result.errors) ? result.errors : [];
+    let text =
+      `✅ Proceso finalizado\n` +
+      `Jugadores encontrados: ${result.players_found || 0}\n` +
+      `Correos enviados: ${result.emails_sent || 0}\n` +
+      `Errores: ${result.errors_count ?? errors.length}`;
+
+    if (errors.length) {
+      text += "\n\nDetalle de errores:\n" +
+        errors.map(error =>
+          `• ${error.email || `Jugador ${error.player_id}`}: ${error.error}`
+        ).join("\n");
+    }
+
+    setStatus("credentialsMessage", "success", text);
+
+  } catch (error) {
+    console.error(error);
+    setStatus(
+      "credentialsMessage",
+      "error",
+      "❌ No fue posible conectar con PuntoRank"
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function sendLeagueWelcome() {
+  const button = document.getElementById("welcomeButton");
+  const leagueValue = document.getElementById("welcomeLeague").value;
+
+  if (!leagueValue) {
+    setStatus(
+      "welcomeMessage",
+      "error",
+      "❌ Selecciona una liga"
+    );
+    return;
+  }
+
+  const leagueName =
+    document.getElementById("welcomeLeague")
+      .selectedOptions[0]
+      .textContent
+      .trim();
+
+  const confirmed = confirm(
+    `¿Enviar el correo de bienvenida a todas las personas inscritas en ${leagueName}?`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  button.disabled = true;
+  setStatus("welcomeMessage", "loading", "Enviando bienvenida...");
+
+  try {
+    const response = await fetch(
+      `${API_URL}/club/communications/send-league-welcome`,
+      {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          token,
+          league_id: Number(leagueValue)
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setStatus(
+        "welcomeMessage",
+        "error",
+        `❌ ${getDetail(result, "No se pudo enviar la bienvenida")}`
+      );
+      return;
+    }
+
+    const errors = Array.isArray(result.errors) ? result.errors : [];
+    let text =
+      `✅ Bienvenida procesada\n` +
+      `Liga: ${result.league_name || leagueName}\n` +
+      `Jugadores encontrados: ${result.players_found || 0}\n` +
+      `Correos enviados: ${result.emails_sent || 0}\n` +
+      `Errores: ${errors.length}`;
+
+    if (errors.length) {
+      text += "\n\nDetalle de errores:\n" +
+        errors.map(error =>
+          `• ${error.email || `Jugador ${error.player_id}`}: ${error.error}`
+        ).join("\n");
+    }
+
+    setStatus("welcomeMessage", "success", text);
+
+  } catch (error) {
+    console.error(error);
+    setStatus(
+      "welcomeMessage",
+      "error",
+      "❌ No fue posible conectar con PuntoRank"
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+
+loadActiveLeagues();
 </script>
 </body>
 </html>
