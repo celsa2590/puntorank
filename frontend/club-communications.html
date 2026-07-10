@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Comunicaciones | PuntoRank</title>
+  <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="top-nav">
+  <a class="nav-icon" href="club-dashboard.html">← Volver</a>
+  <a class="nav-icon" href="index.html">🏠 Inicio</a>
+</div>
+
+<h1>Comunicaciones</h1>
+<p class="subtitle">Envía correos a jugadores/as del club.</p>
+
+<div class="card">
+  <h2>Enviar credenciales</h2>
+
+  <label>Modo</label>
+  <select id="credentialsMode">
+    <option value="test">Solo correo de prueba</option>
+    <option value="club">Todos los jugadores del club</option>
+  </select>
+
+  <label>Correo de prueba</label>
+  <input id="testEmail" type="email" placeholder="tu-correo@gmail.com">
+
+  <button onclick="sendCredentials()">Enviar credenciales</button>
+  <div id="credentialsMessage" class="message"></div>
+</div>
+
+<script>
+const API_URL = "https://puntorank-backend.onrender.com";
+const token = localStorage.getItem("club_token");
+
+if (!token) {
+  window.location.href = "club-login.html";
+}
+
+async function sendCredentials() {
+  const mode = document.getElementById("credentialsMode").value;
+  const testEmail = document.getElementById("testEmail").value.trim();
+  const message = document.getElementById("credentialsMessage");
+
+  message.innerHTML = "Enviando...";
+
+  if (mode === "test" && !testEmail) {
+    message.innerHTML = "❌ Ingresa un correo de prueba.";
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/club/players/send-credentials`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      token,
+      mode,
+      test_email: testEmail || null,
+      reset_passwords: true
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    message.innerHTML = `❌ ${result.detail || "No se pudo enviar."}`;
+    return;
+  }
+
+  message.innerHTML = `✅ Correos enviados: ${result.emails_sent || 0}. Sin correo: ${result.players_without_email || 0}.`;
+}
+</script>
+</body>
+</html>
