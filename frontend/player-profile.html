@@ -187,16 +187,49 @@ function getHistoryLabel(h) {
   return "Ajuste de rating";
 }
 
+
+
 function renderRatingChart(history) {
   const canvas = document.getElementById("ratingChart");
-  if (!canvas || history.length === 0) return;
+
+  if (!canvas) {
+    return;
+  }
+
+  if (history.length === 0) {
+    canvas.parentElement.innerHTML =
+      `<div class="meta">Aún no hay movimientos de rating.</div>`;
+    return;
+  }
 
   const orderedHistory = [...history].reverse();
-  const labels = orderedHistory.map((_, index) => `${index + 1}`);
-  const ratings = orderedHistory.map(h => Number(h.rating_after));
-  const pointColors = orderedHistory.map(h => Number(h.delta || 0) >= 0 ? "#5cad59" : "#dc5858");
 
-  if (ratingChart) ratingChart.destroy();
+  const firstRating = Number(
+    orderedHistory[0].rating_before
+  );
+
+  const labels = [
+    "Inicial",
+    ...orderedHistory.map(h => formatDate(h.created_at))
+  ];
+
+  const ratings = [
+    firstRating,
+    ...orderedHistory.map(h => Number(h.rating_after))
+  ];
+
+  const pointColors = [
+    "#9ca3af",
+    ...orderedHistory.map(h =>
+      Number(h.delta || 0) >= 0
+        ? "#5cad59"
+        : "#dc5858"
+    )
+  ];
+
+  if (ratingChart) {
+    ratingChart.destroy();
+  }
 
   ratingChart = new Chart(canvas, {
     type: "line",
@@ -216,30 +249,73 @@ function renderRatingChart(history) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: false
+        },
+
         tooltip: {
           callbacks: {
-            title: context => getHistoryLabel(orderedHistory[context[0].dataIndex]),
+            title: context => {
+              const index = context[0].dataIndex;
+
+              if (index === 0) {
+                return "Rating inicial";
+              }
+
+              return getHistoryLabel(
+                orderedHistory[index - 1]
+              );
+            },
+
             label: context => {
-              const h = orderedHistory[context.dataIndex];
+              const index = context.dataIndex;
+
+              if (index === 0) {
+                return `Rating ${Number(context.raw).toFixed(2)}`;
+              }
+
+              const h = orderedHistory[index - 1];
               const delta = Number(h.delta || 0);
               const sign = delta > 0 ? "+" : "";
-              return `Rating ${Number(context.raw).toFixed(2)} (${sign}${delta.toFixed(2)} pts)`;
+
+              return (
+                `Rating ${Number(context.raw).toFixed(2)} ` +
+                `(${sign}${delta.toFixed(2)} pts)`
+              );
             }
           }
         }
       },
+
       scales: {
-        x: { display: false },
+        x: {
+          ticks: {
+            color: "#6b7280",
+            maxTicksLimit: 8
+          },
+          grid: {
+            display: false
+          }
+        },
+
         y: {
-          ticks: { color: "#6b7280" },
-          grid: { color: "#eef0f2" }
+          ticks: {
+            color: "#6b7280"
+          },
+          grid: {
+            color: "#eef0f2"
+          }
         }
       }
     }
   });
 }
+
+
+
+
 
 async function loadMatchesHistory() {
   try {

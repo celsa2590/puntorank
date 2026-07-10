@@ -2017,7 +2017,8 @@ def save_league_match_result(
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Obtenemos todos los datos antes de actualizar.
+            # Obtenemos el partido, la liga, las parejas
+            # y los datos necesarios para los correos.
             cur.execute(
                 """
                 SELECT
@@ -2029,6 +2030,7 @@ def save_league_match_result(
 
                     ls.name AS league_name,
                     ls.status AS league_status,
+                    ls.scoring_mode,
 
                     c.name AS club_name,
 
@@ -2061,28 +2063,28 @@ def save_league_match_result(
                 FROM league_matches lm
 
                 JOIN league_seasons ls
-                  ON ls.id = lm.league_id
+                    ON ls.id = lm.league_id
 
                 LEFT JOIN clubs c
-                  ON c.id = ls.club_id
+                    ON c.id = ls.club_id
 
                 JOIN league_pairs pa
-                  ON pa.id = lm.pair_a_id
+                    ON pa.id = lm.pair_a_id
 
                 JOIN players p1a
-                  ON p1a.id = pa.player_1_id
+                    ON p1a.id = pa.player_1_id
 
                 JOIN players p2a
-                  ON p2a.id = pa.player_2_id
+                    ON p2a.id = pa.player_2_id
 
                 JOIN league_pairs pb
-                  ON pb.id = lm.pair_b_id
+                    ON pb.id = lm.pair_b_id
 
                 JOIN players p1b
-                  ON p1b.id = pb.player_1_id
+                    ON p1b.id = pb.player_1_id
 
                 JOIN players p2b
-                  ON p2b.id = pb.player_2_id
+                    ON p2b.id = pb.player_2_id
 
                 WHERE lm.id = %s;
                 """,
@@ -2110,8 +2112,8 @@ def save_league_match_result(
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "La pareja ganadora no pertenece "
-                        "a este partido"
+                        "La pareja ganadora seleccionada "
+                        "no pertenece a este partido"
                     ),
                 )
 
@@ -2123,8 +2125,89 @@ def save_league_match_result(
                     detail="Debes ingresar el resultado",
                 )
 
-            # Evita que se reenvíen correos si el endpoint se llama
-            # nuevamente para un partido ya completado.
+            # Validamos y contamos los sets.
+            raw_sets = score.split()
+
+            sets_a = 0
+            sets_b = 0
+
+            for raw_set in raw_sets:
+                if raw_set.count("-") != 1:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Formato de resultado inválido. "
+                            "Usa, por ejemplo: 6-4 3-6 6-2"
+                        ),
+                    )
+
+                left, right = raw_set.split("-", 1)
+
+                try:
+                    games_a = int(left)
+                    games_b = int(right)
+                except ValueError as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "El resultado debe contener números. "
+                            "Ejemplo: 6-4 3-6 6-2"
+                        ),
+                    ) from exc
+
+                if games_a < 0 or games_b < 0:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Los games no pueden ser negativos",
+                    )
+
+                if games_a == games_b:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Un set no puede terminar empatado: "
+                            f"{raw_set}"
+                        ),
+                    )
+
+                if games_a > games_b:
+                    sets_a += 1
+                else:
+                    sets_b += 1
+
+            # Regla especial de la liga femenina de Arena:
+            # se juegan obligatoriamente los tres sets.
+            if (
+                match["scoring_mode"]
+                == "sets_2_plus_match_1"
+            ):
+                if len(raw_sets) != 3:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Esta liga exige cargar exactamente "
+                            "3 sets. Ejemplo: 6-4 3-6 6-2"
+                        ),
+                    )
+
+                expected_winner_pair_id = (
+                    match["pair_a_id"]
+                    if sets_a > sets_b
+                    else match["pair_b_id"]
+                )
+
+                if (
+                    data.winner_pair_id
+                    != expected_winner_pair_id
+                ):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "La pareja ganadora seleccionada "
+                            "no coincide con los sets ingresados"
+                        ),
+                    )
+
             was_already_completed = (
                 match["status"] == "completed"
             )
@@ -2135,6 +2218,8 @@ def save_league_match_result(
                 SET
                     score = %s,
                     winner_pair_id = %s,
+                    pair_a_sets_won = %s,
+                    pair_b_sets_won = %s,
                     status = 'completed',
                     played_at = COALESCE(played_at, NOW())
                 WHERE id = %s
@@ -2143,18 +2228,23 @@ def save_league_match_result(
                 (
                     score,
                     data.winner_pair_id,
+                    sets_a,
+                    sets_b,
                     match_id,
                 ),
             )
 
             updated_match = cur.fetchone()
 
-            # Guardamos primero el resultado.
+            # Confirmamos el resultado antes de enviar los correos.
             conn.commit()
 
             winner_name = (
                 match["pair_a_name"]
-                if data.winner_pair_id == match["pair_a_id"]
+                if (
+                    data.winner_pair_id
+                    == match["pair_a_id"]
+                )
                 else match["pair_b_name"]
             )
 
@@ -2193,7 +2283,7 @@ def save_league_match_result(
             email_errors = []
             players_without_email = []
 
-            # Solo se notifica la primera vez que se completa.
+            # Solo notificamos la primera vez que se completa.
             if not was_already_completed:
                 for player in players:
                     email = (
@@ -2238,7 +2328,7 @@ def save_league_match_result(
                         send_email(
                             to_email=email,
                             subject=(
-                                f"Resultado registrado: "
+                                "Resultado registrado: "
                                 f"{match['pair_a_name']} vs "
                                 f"{match['pair_b_name']}"
                             ),
@@ -2269,6 +2359,57 @@ def save_league_match_result(
             return {
                 "message": "Resultado guardado correctamente",
                 "match": updated_match,
+                "scoring": {
+                    "mode": match["scoring_mode"],
+                    "pair_a_sets_won": sets_a,
+                    "pair_b_sets_won": sets_b,
+                    "pair_a_points": (
+                        sets_a * 2
+                        + (
+                            1
+                            if (
+                                data.winner_pair_id
+                                == match["pair_a_id"]
+                            )
+                            else 0
+                        )
+                        if (
+                            match["scoring_mode"]
+                            == "sets_2_plus_match_1"
+                        )
+                        else (
+                            3
+                            if (
+                                data.winner_pair_id
+                                == match["pair_a_id"]
+                            )
+                            else 0
+                        )
+                    ),
+                    "pair_b_points": (
+                        sets_b * 2
+                        + (
+                            1
+                            if (
+                                data.winner_pair_id
+                                == match["pair_b_id"]
+                            )
+                            else 0
+                        )
+                        if (
+                            match["scoring_mode"]
+                            == "sets_2_plus_match_1"
+                        )
+                        else (
+                            3
+                            if (
+                                data.winner_pair_id
+                                == match["pair_b_id"]
+                            )
+                            else 0
+                        )
+                    ),
+                },
                 "notification": {
                     "sent": not was_already_completed,
                     "emails_sent": emails_sent,
@@ -2279,20 +2420,28 @@ def save_league_match_result(
                 },
             }
 
+
 @app.get("/leagues/{league_id}/standings")
 def get_league_standings(league_id: int):
-
     with get_conn() as conn:
         with conn.cursor() as cur:
-
             cur.execute(
                 """
                 SELECT
                     lp.id AS pair_id,
-                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+
+                    COALESCE(
+                        lp.pair_name,
+                        p1.name || ' / ' || p2.name
+                    ) AS pair_name,
 
                     COUNT(lm.id) FILTER (
-                        WHERE lm.winner_pair_id = lp.id
+                        WHERE lm.status = 'completed'
+                    ) AS played,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                          AND lm.winner_pair_id = lp.id
                     ) AS wins,
 
                     COUNT(lm.id) FILTER (
@@ -2301,25 +2450,90 @@ def get_league_standings(league_id: int):
                           AND lm.winner_pair_id <> lp.id
                     ) AS losses,
 
-                    COUNT(lm.id) FILTER (
-                        WHERE lm.status = 'completed'
-                    ) AS played,
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN (
+                                    ls.scoring_mode
+                                    = 'sets_2_plus_match_1'
+                                )
+                                THEN
+                                    2 * (
+                                        CASE
+                                            WHEN lm.pair_a_id = lp.id
+                                            THEN COALESCE(
+                                                lm.pair_a_sets_won,
+                                                0
+                                            )
+                                            ELSE COALESCE(
+                                                lm.pair_b_sets_won,
+                                                0
+                                            )
+                                        END
+                                    )
+                                    +
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 1
+                                        ELSE 0
+                                    END
+
+                                ELSE
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 3
+                                        ELSE 0
+                                    END
+                            END
+                        ),
+                        0
+                    ) AS points,
 
                     COALESCE(
                         SUM(
                             CASE
-                                WHEN lm.winner_pair_id = lp.id THEN 3
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
                                 ELSE 0
                             END
                         ),
                         0
-                    ) AS points
+                    ) AS sets_won,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_lost
 
                 FROM league_pairs lp
 
-                LEFT JOIN league_matches lm
-                    ON lm.pair_a_id = lp.id
-                    OR lm.pair_b_id = lp.id
+                JOIN league_seasons ls
+                    ON ls.id = lp.league_id
 
                 JOIN players p1
                     ON p1.id = lp.player_1_id
@@ -2327,15 +2541,28 @@ def get_league_standings(league_id: int):
                 JOIN players p2
                     ON p2.id = lp.player_2_id
 
+                LEFT JOIN league_matches lm
+                    ON (
+                        lm.pair_a_id = lp.id
+                        OR lm.pair_b_id = lp.id
+                    )
+                    AND lm.league_id = lp.league_id
+
                 WHERE lp.league_id = %s
 
                 GROUP BY
                     lp.id,
                     lp.pair_name,
                     p1.name,
-                    p2.name
+                    p2.name,
+                    ls.scoring_mode
 
-                ORDER BY points DESC, wins DESC, pair_name ASC;
+                ORDER BY
+                    points DESC,
+                    wins DESC,
+                    sets_won DESC,
+                    sets_lost ASC,
+                    pair_name ASC;
                 """,
                 (league_id,),
             )
@@ -2347,6 +2574,7 @@ def get_public_league_profile(league_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
 
+            # Datos generales de la liga.
             cur.execute(
                 """
                 SELECT
@@ -2358,72 +2586,239 @@ def get_public_league_profile(league_id: int):
                     ls.status,
                     ls.start_date,
                     ls.end_date,
+                    ls.scoring_mode,
                     c.name AS club_name,
                     c.logo_url AS club_logo_url
                 FROM league_seasons ls
-                LEFT JOIN clubs c ON c.id = ls.club_id
+                LEFT JOIN clubs c
+                    ON c.id = ls.club_id
                 WHERE ls.id = %s;
                 """,
                 (league_id,),
             )
+
             league = cur.fetchone()
 
             if not league:
-                raise HTTPException(status_code=404, detail="Liga no encontrada")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada",
+                )
 
+            # Parejas inscritas.
             cur.execute(
                 """
                 SELECT
                     lp.id AS pair_id,
-                    COALESCE(lp.group_name, 'Grupo único') AS group_name,
-                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo único'
+                    ) AS group_name,
+
+                    COALESCE(
+                        lp.pair_name,
+                        p1.name || ' / ' || p2.name
+                    ) AS pair_name,
+
                     p1.id AS player_1_id,
                     p1.name AS player_1_name,
+
                     p2.id AS player_2_id,
                     p2.name AS player_2_name
+
                 FROM league_pairs lp
-                JOIN players p1 ON p1.id = lp.player_1_id
-                JOIN players p2 ON p2.id = lp.player_2_id
+
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
+
                 WHERE lp.league_id = %s
-                ORDER BY COALESCE(lp.group_name, 'Grupo único'), pair_name;
+
+                ORDER BY
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo único'
+                    ),
+                    pair_name;
                 """,
                 (league_id,),
             )
+
             pairs = cur.fetchall()
 
+            # Tabla de posiciones.
             cur.execute(
                 """
                 SELECT
-                    COALESCE(lp.group_name, 'Grupo único') AS group_name,
-                    lp.id AS pair_id,
-                    COALESCE(lp.pair_name, p1.name || ' / ' || p2.name) AS pair_name,
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo único'
+                    ) AS group_name,
 
-                    COUNT(lm.id) FILTER (WHERE lm.status = 'completed') AS played,
-                    COUNT(lm.id) FILTER (WHERE lm.winner_pair_id = lp.id) AS wins,
+                    lp.id AS pair_id,
+
+                    COALESCE(
+                        lp.pair_name,
+                        p1.name || ' / ' || p2.name
+                    ) AS pair_name,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                    ) AS played,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                          AND lm.winner_pair_id = lp.id
+                    ) AS wins,
+
                     COUNT(lm.id) FILTER (
                         WHERE lm.status = 'completed'
                           AND lm.winner_pair_id IS NOT NULL
                           AND lm.winner_pair_id <> lp.id
                     ) AS losses,
-                    COALESCE(SUM(CASE WHEN lm.winner_pair_id = lp.id THEN 3 ELSE 0 END), 0) AS points
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN (
+                                    ls.scoring_mode
+                                    = 'sets_2_plus_match_1'
+                                )
+                                THEN
+                                    2 * (
+                                        CASE
+                                            WHEN lm.pair_a_id = lp.id
+                                            THEN COALESCE(
+                                                lm.pair_a_sets_won,
+                                                0
+                                            )
+
+                                            WHEN lm.pair_b_id = lp.id
+                                            THEN COALESCE(
+                                                lm.pair_b_sets_won,
+                                                0
+                                            )
+
+                                            ELSE 0
+                                        END
+                                    )
+                                    +
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 1
+                                        ELSE 0
+                                    END
+
+                                ELSE
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 3
+                                        ELSE 0
+                                    END
+                            END
+                        ),
+                        0
+                    ) AS points,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_won,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
+
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_lost
+
                 FROM league_pairs lp
-                JOIN players p1 ON p1.id = lp.player_1_id
-                JOIN players p2 ON p2.id = lp.player_2_id
+
+                JOIN league_seasons ls
+                    ON ls.id = lp.league_id
+
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
+
                 LEFT JOIN league_matches lm
-                    ON lm.pair_a_id = lp.id
-                    OR lm.pair_b_id = lp.id
+                    ON (
+                        lm.pair_a_id = lp.id
+                        OR lm.pair_b_id = lp.id
+                    )
+                    AND lm.league_id = lp.league_id
+
                 WHERE lp.league_id = %s
-                GROUP BY lp.id, lp.group_name, lp.pair_name, p1.name, p2.name
+
+                GROUP BY
+                    lp.id,
+                    lp.group_name,
+                    lp.pair_name,
+                    p1.name,
+                    p2.name,
+                    ls.scoring_mode
+
                 ORDER BY
-                    COALESCE(lp.group_name, 'Grupo único'),
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo único'
+                    ),
                     points DESC,
                     wins DESC,
+                    sets_won DESC,
+                    sets_lost ASC,
                     pair_name ASC;
                 """,
                 (league_id,),
             )
+
             standings = cur.fetchall()
 
+            # Partidos y resultados.
             cur.execute(
                 """
                 SELECT
@@ -2437,34 +2832,64 @@ def get_public_league_profile(league_id: int):
                     lm.score,
                     lm.status,
                     lm.played_at,
+                    lm.pair_a_sets_won,
+                    lm.pair_b_sets_won,
 
-                    COALESCE(pa.group_name, 'Grupo único') AS group_name,
+                    COALESCE(
+                        pa.group_name,
+                        'Grupo único'
+                    ) AS group_name,
 
                     pa.id AS pair_a_id,
-                    COALESCE(pa.pair_name, p1a.name || ' / ' || p2a.name) AS pair_a_name,
+
+                    COALESCE(
+                        pa.pair_name,
+                        p1a.name || ' / ' || p2a.name
+                    ) AS pair_a_name,
 
                     pb.id AS pair_b_id,
-                    COALESCE(pb.pair_name, p1b.name || ' / ' || p2b.name) AS pair_b_name,
+
+                    COALESCE(
+                        pb.pair_name,
+                        p1b.name || ' / ' || p2b.name
+                    ) AS pair_b_name,
 
                     lm.winner_pair_id
-                FROM league_matches lm
-                JOIN league_pairs pa ON pa.id = lm.pair_a_id
-                JOIN players p1a ON p1a.id = pa.player_1_id
-                JOIN players p2a ON p2a.id = pa.player_2_id
 
-                JOIN league_pairs pb ON pb.id = lm.pair_b_id
-                JOIN players p1b ON p1b.id = pb.player_1_id
-                JOIN players p2b ON p2b.id = pb.player_2_id
+                FROM league_matches lm
+
+                JOIN league_pairs pa
+                    ON pa.id = lm.pair_a_id
+
+                JOIN players p1a
+                    ON p1a.id = pa.player_1_id
+
+                JOIN players p2a
+                    ON p2a.id = pa.player_2_id
+
+                JOIN league_pairs pb
+                    ON pb.id = lm.pair_b_id
+
+                JOIN players p1b
+                    ON p1b.id = pb.player_1_id
+
+                JOIN players p2b
+                    ON p2b.id = pb.player_2_id
 
                 WHERE lm.league_id = %s
+
                 ORDER BY
-                    COALESCE(pa.group_name, 'Grupo único'),
+                    COALESCE(
+                        pa.group_name,
+                        'Grupo único'
+                    ),
                     lm.round_number,
                     lm.scheduled_at NULLS LAST,
                     lm.id;
                 """,
                 (league_id,),
             )
+
             matches = cur.fetchall()
 
             return {
@@ -2473,6 +2898,7 @@ def get_public_league_profile(league_id: int):
                 "standings": standings,
                 "matches": matches,
             }
+
 
 @app.get("/public/leagues")
 def get_public_leagues():
