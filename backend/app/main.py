@@ -38,9 +38,20 @@ from app.services.match_service import (
 )
 from app.routers.matches import router as matches_router
 from app.routers.player_password import router as player_password_router
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import (
+    FastAPI,
+    HTTPException,
+    Header,
+    File,
+    Form,
+    UploadFile,
+)
 from pydantic import BaseModel
-
+from app.services.r2_service import (
+    delete_player_photo_by_url,
+    process_profile_image,
+    upload_player_photo,
+)
 
 load_dotenv()
 
@@ -522,6 +533,7 @@ def get_player_profile(player_id: int):
                     p.side,
                     p.category,
                     p.is_registered,
+                    p.photo_url,
                     ROUND(pr.rating, 2) AS rating,
                     pr.matches_count,
                     COALESCE(
@@ -538,7 +550,7 @@ def get_player_profile(player_id: int):
                 LEFT JOIN player_clubs pc ON pc.player_id = p.id
                 LEFT JOIN clubs c ON c.id = pc.club_id
                 WHERE p.id = %s
-                GROUP BY p.id, p.name, p.side, p.category, p.is_registered, pr.rating, pr.matches_count;
+                GROUP BY p.id, p.name, p.side, p.category, p.is_registered, p.photo_url, pr.rating, pr.matches_count;
                 """,
                 (player_id,),
             )
@@ -4165,6 +4177,7 @@ def get_authenticated_player(cur, session_token: str):
             p.is_registered,
             p.email_verified,
             p.must_change_password
+            p.photo_url
         FROM player_sessions ps
         JOIN players p
             ON p.id = ps.player_id
@@ -5313,6 +5326,127 @@ def player_dashboard(token: str):
                 "tournaments": tournaments,
                 "recent_matches": recent_matches,
             }
+
+@app.post("/player/photo")
+async def upload_player_photo_endpoint(
+    session_token: str = Form(...),
+    photo: UploadFile = File(...),
+):
+    content_type = (
+        photo.content_type.lower()
+        if photo.content_type
+        else None
+    )
+
+    # Leemos como máximo 5 MB más un byte.
+    raw_image = await photo.read(
+        5 * 1024 * 1024 + 1
+    )
+
+    await photo.close()
+
+    if len(raw_image) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail="La imagen supera el máximo de 5 MB",
+        )
+
+    try:
+        processed_image = process_profile_image(
+            raw_image=raw_image,
+            content_type=content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            player = get_authenticated_player(
+                cur,
+                session_token,
+            )
+
+            require_password_changed(player)
+
+            cur.execute(
+                """
+                SELECT photo_url
+                FROM players
+                WHERE id = %s;
+                """,
+                (player["id"],),
+            )
+
+            current = cur.fetchone()
+            previous_photo_url = (
+                current["photo_url"]
+                if current
+                else None
+            )
+
+            try:
+                object_key, photo_url = (
+                    upload_player_photo(
+                        player_id=player["id"],
+                        image_bytes=processed_image,
+                    )
+                )
+            except RuntimeError as exc:
+                print(
+                    "Error subiendo foto a R2:",
+                    type(exc).__name__,
+                    str(exc),
+                )
+
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "No se pudo guardar la foto "
+                        "en el almacenamiento"
+                    ),
+                ) from exc
+
+            try:
+                cur.execute(
+                    """
+                    UPDATE players
+                    SET photo_url = %s
+                    WHERE id = %s
+                    RETURNING photo_url;
+                    """,
+                    (
+                        photo_url,
+                        player["id"],
+                    ),
+                )
+
+                updated = cur.fetchone()
+                conn.commit()
+
+            except Exception:
+                conn.rollback()
+
+                # Evita dejar el archivo nuevo huérfano.
+                delete_player_photo_by_url(
+                    photo_url,
+                )
+
+                raise
+
+    # Se borra la anterior después del commit.
+    if previous_photo_url != photo_url:
+        delete_player_photo_by_url(
+            previous_photo_url,
+        )
+
+    return {
+        "message": "Foto actualizada correctamente",
+        "photo_url": updated["photo_url"],
+        "object_key": object_key,
+    }
 
 @app.post("/player/matches/report")
 def player_report_match(data: PlayerMatchCreate):
