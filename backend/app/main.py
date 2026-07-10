@@ -4175,7 +4175,7 @@ def league_welcome_email_template(
 def test_email_template(
     data: InternalTemplateTestRequest,
     x_internal_key: str | None = Header(default=None),
-):
+
     expected_key = os.getenv("INTERNAL_EMAIL_TEST_KEY")
 
     if not expected_key:
