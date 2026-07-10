@@ -733,7 +733,7 @@ async function loadStandings() {
 }
 
 async function finishLeague() {
-  const ok = confirm("¿Seguro que deseas finalizar la liga? Esto procesará el ranking.");
+  const ok = confirm("¿Seguro que deseas finalizar la liga? Después no podrás modificar sus resultados.");
   if (!ok) return;
 
   const response = await fetch(`${API_URL}/leagues/${leagueId}/finish`, {
