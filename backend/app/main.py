@@ -2671,6 +2671,7 @@ def save_league_match_result(
                 },
             }
 
+
 @app.get("/leagues/{league_id}/standings")
 def get_league_standings(league_id: int):
     with get_conn() as conn:
@@ -2680,6 +2681,7 @@ def get_league_standings(league_id: int):
                 SELECT
                     lp.id AS pair_id,
                     lp.points_adjustment,
+
                     COALESCE(
                         lp.pair_name,
                         p1.name || ' / ' || p2.name
@@ -2700,63 +2702,100 @@ def get_league_standings(league_id: int):
                           AND lm.winner_pair_id <> lp.id
                     ) AS losses,
 
+                    (
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN lm.status <> 'completed'
+                                    THEN 0
+
+                                    WHEN (
+                                        ls.scoring_mode
+                                        = 'sets_2_plus_match_1'
+                                    )
+                                    THEN
+                                        2 * (
+                                            CASE
+                                                WHEN lm.pair_a_id = lp.id
+                                                THEN COALESCE(
+                                                    lm.pair_a_sets_won,
+                                                    0
+                                                )
+
+                                                WHEN lm.pair_b_id = lp.id
+                                                THEN COALESCE(
+                                                    lm.pair_b_sets_won,
+                                                    0
+                                                )
+
+                                                ELSE 0
+                                            END
+                                        )
+                                        +
+                                        CASE
+                                            WHEN lm.winner_pair_id = lp.id
+                                            THEN 1
+                                            ELSE 0
+                                        END
+
+                                    ELSE
+                                        CASE
+                                            WHEN lm.winner_pair_id = lp.id
+                                            THEN 3
+                                            ELSE 0
+                                        END
+                                END
+                            ),
+                            0
+                        )
+
+                        -
+
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN lm.status <> 'completed'
+                                    THEN 0
+
+                                    WHEN (
+                                        lm.pair_a_id = lp.id
+                                        AND lm.pair_a_used_substitute = TRUE
+                                    )
+                                    THEN 1
+
+                                    WHEN (
+                                        lm.pair_b_id = lp.id
+                                        AND lm.pair_b_used_substitute = TRUE
+                                    )
+                                    THEN 1
+
+                                    ELSE 0
+                                END
+                            ),
+                            0
+                        )
+
+                        + lp.points_adjustment
+                    ) AS points,
+
                     COALESCE(
                         SUM(
                             CASE
                                 WHEN lm.status <> 'completed'
                                 THEN 0
 
-                                WHEN (
-                                    ls.scoring_mode
-                                    = 'sets_2_plus_match_1'
-                                )
-                                THEN
-                                    2 * (
-                                        CASE
-                                            WHEN lm.pair_a_id = lp.id
-                                            THEN COALESCE(
-                                                lm.pair_a_sets_won,
-                                                0
-                                            )
-                                            ELSE COALESCE(
-                                                lm.pair_b_sets_won,
-                                                0
-                                            )
-                                        END
-                                    )
-                                    +
-                                    CASE
-                                        WHEN lm.winner_pair_id = lp.id
-                                        THEN 1
-                                        ELSE 0
-                                    END
-
-                                ELSE
-                                    CASE
-                                        WHEN lm.winner_pair_id = lp.id
-                                        THEN 3
-                                        ELSE 0
-                                    END
-                            END
-                        ),
-                        0
-                    )
-                    + lp.points_adjustment
-                    AS points,
-
-                    COALESCE(
-                        SUM(
-                            CASE
                                 WHEN lm.pair_a_id = lp.id
                                 THEN COALESCE(
                                     lm.pair_a_sets_won,
                                     0
                                 )
+
                                 WHEN lm.pair_b_id = lp.id
                                 THEN COALESCE(
                                     lm.pair_b_sets_won,
                                     0
                                 )
+
                                 ELSE 0
                             END
                         ),
@@ -2766,21 +2805,50 @@ def get_league_standings(league_id: int):
                     COALESCE(
                         SUM(
                             CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
                                 WHEN lm.pair_a_id = lp.id
                                 THEN COALESCE(
                                     lm.pair_b_sets_won,
                                     0
                                 )
+
                                 WHEN lm.pair_b_id = lp.id
                                 THEN COALESCE(
                                     lm.pair_a_sets_won,
                                     0
                                 )
+
                                 ELSE 0
                             END
                         ),
                         0
-                    ) AS sets_lost
+                    ) AS sets_lost,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN (
+                                    lm.pair_a_id = lp.id
+                                    AND lm.pair_a_used_substitute = TRUE
+                                )
+                                THEN 1
+
+                                WHEN (
+                                    lm.pair_b_id = lp.id
+                                    AND lm.pair_b_used_substitute = TRUE
+                                )
+                                THEN 1
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS substitute_penalties
 
                 FROM league_pairs lp
 
