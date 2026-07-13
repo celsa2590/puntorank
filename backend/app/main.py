@@ -2182,6 +2182,7 @@ def generate_league_fixture(league_id: int):
                 "matches_created": total_matches_created,
             }
 
+
 @app.get("/leagues/{league_id}/matches")
 def get_league_matches(league_id: int):
     with get_conn() as conn:
@@ -2208,6 +2209,11 @@ def get_league_matches(league_id: int):
 
                     lm.pair_a_used_substitute,
                     lm.pair_b_used_substitute,
+
+                    COALESCE(
+                        pa.group_name,
+                        'Grupo 1'
+                    ) AS group_name,
 
                     pa.id AS pair_a_id,
 
@@ -2264,6 +2270,12 @@ def get_league_matches(league_id: int):
 
                         ELSE 4
                     END,
+
+                    COALESCE(
+                        pa.group_name,
+                        'Grupo 1'
+                    ),
+
                     lm.round_number,
                     lm.cup,
                     lm.id;
@@ -2272,7 +2284,6 @@ def get_league_matches(league_id: int):
             )
 
             return cur.fetchall()
-
 
 
 @app.post("/leagues/{league_id}/pairs")
@@ -3855,13 +3866,85 @@ def get_club_players(club_id: int):
 
             return cur.fetchall()
 
+
 @app.post("/leagues/{league_id}/generate-playoffs")
 def generate_league_playoffs(league_id: int):
-
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Verificar que todos los partidos regulares estén completos
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    group_count,
+                    courts_count,
+                    scoring_mode,
+                    playoff_format,
+                    gold_qualifiers,
+                    silver_qualifiers
+                FROM league_seasons
+                WHERE id = %s
+                FOR UPDATE;
+                """,
+                (league_id,),
+            )
+
+            league = cur.fetchone()
+
+            if not league:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada",
+                )
+
+            if league["playoff_format"] == "none":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Esta liga está configurada "
+                        "sin playoffs"
+                    ),
+                )
+
+            if league["playoff_format"] != "gold_silver":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Formato de playoffs no soportado",
+                )
+
+            group_count = int(
+                league["group_count"] or 1
+            )
+
+            courts_count = int(
+                league["courts_count"] or 1
+            )
+
+            if group_count not in (1, 2):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Por ahora los playoffs automáticos "
+                        "soportan ligas de 1 o 2 grupos"
+                    ),
+                )
+
+            if (
+                int(league["gold_qualifiers"] or 0) != 4
+                or int(
+                    league["silver_qualifiers"] or 0
+                ) != 4
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "El formato Oro/Plata actual exige "
+                        "4 clasificadas a cada copa"
+                    ),
+                )
+
+            # La fase regular debe estar completa.
             cur.execute(
                 """
                 SELECT COUNT(*) AS pending
@@ -3878,10 +3961,37 @@ def generate_league_playoffs(league_id: int):
             if pending > 0:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Faltan {pending} partidos de fase regular",
+                    detail=(
+                        f"Faltan {pending} partidos "
+                        "de fase regular"
+                    ),
                 )
 
-            # Evitar duplicar playoffs
+            # Debe existir al menos un partido regular.
+            cur.execute(
+                """
+                SELECT COUNT(*) AS regular_count
+                FROM league_matches
+                WHERE league_id = %s
+                  AND phase = 'regular';
+                """,
+                (league_id,),
+            )
+
+            regular_count = cur.fetchone()[
+                "regular_count"
+            ]
+
+            if regular_count == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Primero debes generar y completar "
+                        "el fixture regular"
+                    ),
+                )
+
+            # Evitar duplicar playoffs.
             cur.execute(
                 """
                 SELECT COUNT(*) AS existing
@@ -3900,66 +4010,350 @@ def generate_league_playoffs(league_id: int):
                     detail="Los playoffs ya fueron generados",
                 )
 
-            # Obtener standings
+            # Tabla regular usando el scoring_mode real.
             cur.execute(
                 """
                 SELECT
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo 1'
+                    ) AS group_name,
+
                     lp.id AS pair_id,
 
+                    COALESCE(
+                        lp.pair_name,
+                        p1.name || ' / ' || p2.name
+                    ) AS pair_name,
+
                     COUNT(lm.id) FILTER (
-                        WHERE lm.winner_pair_id = lp.id
+                        WHERE lm.status = 'completed'
+                    ) AS played,
+
+                    COUNT(lm.id) FILTER (
+                        WHERE lm.status = 'completed'
+                          AND lm.winner_pair_id = lp.id
                     ) AS wins,
 
                     COALESCE(
                         SUM(
                             CASE
-                                WHEN lm.winner_pair_id = lp.id THEN 3
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN (
+                                    ls.scoring_mode
+                                    = 'sets_2_plus_match_1'
+                                )
+                                THEN
+                                    (
+                                        2 * CASE
+                                            WHEN lm.pair_a_id = lp.id
+                                            THEN COALESCE(
+                                                lm.pair_a_sets_won,
+                                                0
+                                            )
+
+                                            WHEN lm.pair_b_id = lp.id
+                                            THEN COALESCE(
+                                                lm.pair_b_sets_won,
+                                                0
+                                            )
+
+                                            ELSE 0
+                                        END
+                                    )
+                                    +
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 1
+                                        ELSE 0
+                                    END
+
+                                WHEN (
+                                    ls.scoring_mode
+                                    = 'win_1_no_substitute_penalty'
+                                )
+                                THEN
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 1
+                                        ELSE 0
+                                    END
+
+                                WHEN (
+                                    ls.scoring_mode = 'match_win_3'
+                                )
+                                THEN
+                                    CASE
+                                        WHEN lm.winner_pair_id = lp.id
+                                        THEN 3
+                                        ELSE 0
+                                    END
+
                                 ELSE 0
                             END
                         ),
                         0
-                    ) AS points
+                    )
+
+                    -
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.status <> 'completed'
+                                THEN 0
+
+                                WHEN (
+                                    ls.scoring_mode
+                                    <> 'sets_2_plus_match_1'
+                                )
+                                THEN 0
+
+                                WHEN (
+                                    lm.pair_a_id = lp.id
+                                    AND lm.pair_a_used_substitute = TRUE
+                                )
+                                THEN 1
+
+                                WHEN (
+                                    lm.pair_b_id = lp.id
+                                    AND lm.pair_b_used_substitute = TRUE
+                                )
+                                THEN 1
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    )
+
+                    + lp.points_adjustment
+
+                    AS points,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_won,
+
+                    COALESCE(
+                        SUM(
+                            CASE
+                                WHEN lm.pair_a_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_b_sets_won,
+                                    0
+                                )
+
+                                WHEN lm.pair_b_id = lp.id
+                                THEN COALESCE(
+                                    lm.pair_a_sets_won,
+                                    0
+                                )
+
+                                ELSE 0
+                            END
+                        ),
+                        0
+                    ) AS sets_lost
 
                 FROM league_pairs lp
+
+                JOIN league_seasons ls
+                    ON ls.id = lp.league_id
+
+                JOIN players p1
+                    ON p1.id = lp.player_1_id
+
+                JOIN players p2
+                    ON p2.id = lp.player_2_id
 
                 LEFT JOIN league_matches lm
                     ON (
                         lm.pair_a_id = lp.id
                         OR lm.pair_b_id = lp.id
                     )
-                   AND lm.phase = 'regular'
-                   AND lm.status = 'completed'
+                    AND lm.league_id = lp.league_id
+                    AND lm.phase = 'regular'
 
                 WHERE lp.league_id = %s
 
-                GROUP BY lp.id
+                GROUP BY
+                    lp.id,
+                    lp.group_name,
+                    lp.pair_name,
+                    lp.points_adjustment,
+                    p1.name,
+                    p2.name,
+                    ls.scoring_mode
 
-                ORDER BY points DESC, wins DESC, lp.id ASC;
+                ORDER BY
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo 1'
+                    ),
+                    points DESC,
+                    wins DESC,
+                    sets_won DESC,
+                    sets_lost ASC,
+                    pair_name ASC;
                 """,
                 (league_id,),
             )
 
             standings = cur.fetchall()
 
-            if len(standings) < 8:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Se necesitan al menos 8 parejas para generar Copa Oro y Copa Plata",
+            grouped_standings = {}
+
+            for row in standings:
+                group_name = row["group_name"]
+
+                if group_name not in grouped_standings:
+                    grouped_standings[group_name] = []
+
+                grouped_standings[group_name].append(
+                    row
                 )
 
-            oro = standings[:4]
-            plata = standings[4:8]
+            playoff_matches = []
 
-            playoff_matches = [
-                ("oro", oro[0]["pair_id"], oro[3]["pair_id"]),
-                ("oro", oro[1]["pair_id"], oro[2]["pair_id"]),
-                ("plata", plata[0]["pair_id"], plata[3]["pair_id"]),
-                ("plata", plata[1]["pair_id"], plata[2]["pair_id"]),
-            ]
+            if group_count == 1:
+                if len(standings) < 8:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Se necesitan al menos 8 parejas "
+                            "para Copa Oro y Copa Plata"
+                        ),
+                    )
 
-            created = 0
+                oro = standings[:4]
+                plata = standings[4:8]
 
-            for cup, pair_a, pair_b in playoff_matches:
+                playoff_matches = [
+                    (
+                        "oro",
+                        oro[0]["pair_id"],
+                        oro[3]["pair_id"],
+                    ),
+                    (
+                        "oro",
+                        oro[1]["pair_id"],
+                        oro[2]["pair_id"],
+                    ),
+                    (
+                        "plata",
+                        plata[0]["pair_id"],
+                        plata[3]["pair_id"],
+                    ),
+                    (
+                        "plata",
+                        plata[1]["pair_id"],
+                        plata[2]["pair_id"],
+                    ),
+                ]
+
+            else:
+                group_names = sorted(
+                    grouped_standings.keys()
+                )
+
+                if len(group_names) != 2:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "La liga está configurada con "
+                            "2 grupos, pero no se encontraron "
+                            "exactamente 2 grupos"
+                        ),
+                    )
+
+                group_a = grouped_standings[
+                    group_names[0]
+                ]
+
+                group_b = grouped_standings[
+                    group_names[1]
+                ]
+
+                if len(group_a) < 4 or len(group_b) < 4:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Cada grupo necesita al menos "
+                            "4 parejas para generar Oro y Plata"
+                        ),
+                    )
+
+                # Oro:
+                # A1 vs B2
+                # B1 vs A2
+                playoff_matches.extend(
+                    [
+                        (
+                            "oro",
+                            group_a[0]["pair_id"],
+                            group_b[1]["pair_id"],
+                        ),
+                        (
+                            "oro",
+                            group_b[0]["pair_id"],
+                            group_a[1]["pair_id"],
+                        ),
+                    ]
+                )
+
+                # Plata:
+                # A3 vs B4
+                # B3 vs A4
+                playoff_matches.extend(
+                    [
+                        (
+                            "plata",
+                            group_a[2]["pair_id"],
+                            group_b[3]["pair_id"],
+                        ),
+                        (
+                            "plata",
+                            group_b[2]["pair_id"],
+                            group_a[3]["pair_id"],
+                        ),
+                    ]
+                )
+
+            created_matches = []
+
+            for index, (
+                cup,
+                pair_a_id,
+                pair_b_id,
+            ) in enumerate(
+                playoff_matches,
+                start=1,
+            ):
+                assigned_court = None
+
+                if index <= courts_count:
+                    assigned_court = f"Cancha {index}"
+
                 cur.execute(
                     """
                     INSERT INTO league_matches
@@ -3971,55 +4365,95 @@ def generate_league_playoffs(league_id: int):
                             round_number,
                             pair_a_id,
                             pair_b_id,
-                            status
+                            status,
+                            court
                         )
                     VALUES
-                        (%s, 'playoff', %s, 'semifinal', 1, %s, %s, 'scheduled');
+                        (
+                            %s,
+                            'playoff',
+                            %s,
+                            'semifinal',
+                            1,
+                            %s,
+                            %s,
+                            'scheduled',
+                            %s
+                        )
+                    RETURNING id;
                     """,
                     (
                         league_id,
                         cup,
-                        pair_a,
-                        pair_b,
+                        pair_a_id,
+                        pair_b_id,
+                        assigned_court,
                     ),
                 )
 
-                created += 1
+                row = cur.fetchone()
+
+                created_matches.append(
+                    {
+                        "match_id": row["id"],
+                        "cup": cup,
+                        "pair_a_id": pair_a_id,
+                        "pair_b_id": pair_b_id,
+                        "court": assigned_court,
+                    }
+                )
 
             conn.commit()
 
             return {
-                "message": "Playoffs generados",
-                "matches_created": created,
+                "message": (
+                    "Semifinales de Copa Oro "
+                    "y Copa Plata generadas"
+                ),
+                "group_count": group_count,
+                "matches_created": len(
+                    created_matches
+                ),
+                "matches": created_matches,
             }
+
+
 @app.post("/leagues/{league_id}/generate-finals")
 def generate_league_finals(league_id: int):
-
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Verificar semifinales pendientes
             cur.execute(
                 """
-                SELECT COUNT(*) AS pending
-                FROM league_matches
-                WHERE league_id = %s
-                  AND phase = 'playoff'
-                  AND bracket_round = 'semifinal'
-                  AND status <> 'completed';
+                SELECT
+                    id,
+                    playoff_format,
+                    courts_count
+                FROM league_seasons
+                WHERE id = %s
+                FOR UPDATE;
                 """,
                 (league_id,),
             )
 
-            pending = cur.fetchone()["pending"]
+            league = cur.fetchone()
 
-            if pending > 0:
+            if not league:
                 raise HTTPException(
-                    status_code=400,
-                    detail=f"Faltan {pending} semifinales por completar",
+                    status_code=404,
+                    detail="Liga no encontrada",
                 )
 
-            # Evitar duplicar finales
+            if league["playoff_format"] != "gold_silver":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Esta liga no utiliza el formato "
+                        "Copa Oro y Copa Plata"
+                    ),
+                )
+
+            # No debe existir una final previa.
             cur.execute(
                 """
                 SELECT COUNT(*) AS existing
@@ -4039,33 +4473,119 @@ def generate_league_finals(league_id: int):
                     detail="Las finales ya fueron generadas",
                 )
 
-            finals_created = 0
+            # Leer las cuatro semifinales.
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    cup,
+                    status,
+                    winner_pair_id
+                FROM league_matches
+                WHERE league_id = %s
+                  AND phase = 'playoff'
+                  AND bracket_round = 'semifinal'
+                ORDER BY cup, id;
+                """,
+                (league_id,),
+            )
 
-            for cup in ["oro", "plata"]:
+            semifinals = cur.fetchall()
 
-                cur.execute(
-                    """
-                    SELECT winner_pair_id
-                    FROM league_matches
-                    WHERE league_id = %s
-                      AND phase = 'playoff'
-                      AND bracket_round = 'semifinal'
-                      AND cup = %s
-                    ORDER BY id;
-                    """,
-                    (league_id, cup),
+            if len(semifinals) != 4:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Deben existir exactamente "
+                        "4 semifinales"
+                    ),
                 )
 
-                winners = cur.fetchall()
+            pending = [
+                match
+                for match in semifinals
+                if (
+                    match["status"] != "completed"
+                    or match["winner_pair_id"] is None
+                )
+            ]
 
-                if len(winners) != 2:
+            if pending:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Debes completar todas las "
+                        "semifinales antes de generar "
+                        "las finales"
+                    ),
+                )
+
+            by_cup = {
+                "oro": [],
+                "plata": [],
+            }
+
+            for match in semifinals:
+                if match["cup"] not in by_cup:
                     raise HTTPException(
                         status_code=400,
-                        detail=f"No hay 2 semifinales completas para copa {cup}",
+                        detail=(
+                            "Se encontró una semifinal "
+                            "con copa no válida"
+                        ),
                     )
 
-                pair_a = winners[0]["winner_pair_id"]
-                pair_b = winners[1]["winner_pair_id"]
+                by_cup[match["cup"]].append(
+                    match
+                )
+
+            if (
+                len(by_cup["oro"]) != 2
+                or len(by_cup["plata"]) != 2
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Deben existir 2 semifinales "
+                        "de Oro y 2 de Plata"
+                    ),
+                )
+
+            courts_count = int(
+                league["courts_count"] or 1
+            )
+
+            finals_created = []
+
+            for index, cup in enumerate(
+                ("oro", "plata"),
+                start=1,
+            ):
+                semifinal_1 = by_cup[cup][0]
+                semifinal_2 = by_cup[cup][1]
+
+                pair_a_id = semifinal_1[
+                    "winner_pair_id"
+                ]
+
+                pair_b_id = semifinal_2[
+                    "winner_pair_id"
+                ]
+
+                if pair_a_id == pair_b_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"La final de Copa {cup} "
+                            "tiene la misma pareja en "
+                            "ambos lados"
+                        ),
+                    )
+
+                assigned_court = None
+
+                if index <= courts_count:
+                    assigned_court = f"Cancha {index}"
 
                 cur.execute(
                     """
@@ -4078,26 +4598,55 @@ def generate_league_finals(league_id: int):
                             round_number,
                             pair_a_id,
                             pair_b_id,
-                            status
+                            status,
+                            court
                         )
                     VALUES
-                        (%s, 'playoff', %s, 'final', 2, %s, %s, 'scheduled');
+                        (
+                            %s,
+                            'playoff',
+                            %s,
+                            'final',
+                            2,
+                            %s,
+                            %s,
+                            'scheduled',
+                            %s
+                        )
+                    RETURNING id;
                     """,
                     (
                         league_id,
                         cup,
-                        pair_a,
-                        pair_b,
+                        pair_a_id,
+                        pair_b_id,
+                        assigned_court,
                     ),
                 )
 
-                finals_created += 1
+                final_row = cur.fetchone()
+
+                finals_created.append(
+                    {
+                        "match_id": final_row["id"],
+                        "cup": cup,
+                        "pair_a_id": pair_a_id,
+                        "pair_b_id": pair_b_id,
+                        "court": assigned_court,
+                    }
+                )
 
             conn.commit()
 
             return {
-                "message": "Finales generadas",
-                "finals_created": finals_created,
+                "message": (
+                    "Finales de Copa Oro "
+                    "y Copa Plata generadas"
+                ),
+                "matches_created": len(
+                    finals_created
+                ),
+                "matches": finals_created,
             }
 
 

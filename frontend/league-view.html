@@ -375,11 +375,125 @@
 
   <section id="tab-matches" class="tab-panel">
     <div class="card">
-      <h2>Partidos de liga</h2>
-      <div class="section-actions">
-        <button onclick="generateFixture()">Generar fixture</button>
+      <h2>Configuración y fixture</h2>
+
+      <div
+        id="leagueConfiguration"
+        class="pair-form"
+        style="margin-top:18px;"
+      >
+        <div>
+          <label for="groupCount">
+            Cantidad de grupos
+          </label>
+
+          <select id="groupCount">
+            <option value="1">1 grupo</option>
+            <option value="2">2 grupos</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="courtsCount">
+            Cantidad de canchas
+          </label>
+
+          <input
+            id="courtsCount"
+            type="number"
+            min="1"
+            max="20"
+            value="1"
+          >
+        </div>
+
+        <div>
+          <label for="scoringMode">
+            Sistema de puntuación
+          </label>
+
+          <select id="scoringMode">
+            <option value="win_1_no_substitute_penalty">
+              Vola: 1 punto por victoria
+            </option>
+
+            <option value="sets_2_plus_match_1">
+              Arena: 2 por set + 1 victoria − parche
+            </option>
+
+            <option value="match_win_3">
+              Tradicional: 3 puntos por victoria
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label for="playoffFormat">
+            Playoffs
+          </label>
+
+          <select
+            id="playoffFormat"
+            onchange="updatePlayoffFields()"
+          >
+            <option value="gold_silver">
+              Copa Oro y Copa Plata
+            </option>
+
+            <option value="none">
+              Sin playoffs
+            </option>
+          </select>
+        </div>
+
+        <div id="goldQualifiersField">
+          <label for="goldQualifiers">
+            Clasificadas a Oro
+          </label>
+
+          <input
+            id="goldQualifiers"
+            type="number"
+            value="4"
+            readonly
+          >
+        </div>
+
+        <div id="silverQualifiersField">
+          <label for="silverQualifiers">
+            Clasificadas a Plata
+          </label>
+
+          <input
+            id="silverQualifiers"
+            type="number"
+            value="4"
+            readonly
+          >
+        </div>
       </div>
-      <div id="matchesList">Cargando partidos...</div>
+
+      <div id="configurationMessage" class="meta"></div>
+
+      <div class="section-actions">
+        <button
+          id="saveConfigurationButton"
+          onclick="saveLeagueConfiguration()"
+        >
+          Guardar configuración
+        </button>
+
+        <button
+          id="generateFixtureButton"
+          onclick="generateFixture()"
+        >
+          Generar fixture
+        </button>
+      </div>
+
+      <div id="matchesList">
+        Cargando partidos...
+      </div>
     </div>
   </section>
 
@@ -468,24 +582,259 @@ async function refreshAll() {
 }
 
 async function loadLeague() {
-  const response = await fetch(`${API_URL}/club/${clubId}/leagues`);
+  const response = await fetch(
+    `${API_URL}/club/${clubId}/leagues`
+  );
+
   const leagues = await response.json();
 
-  const league = leagues.find(l => l.id == leagueId);
+  if (!response.ok) {
+    alert(
+      leagues.detail ||
+      "No se pudo cargar la liga"
+    );
+    return;
+  }
+
+  const league = leagues.find(
+    item => Number(item.id) === Number(leagueId)
+  );
+
   currentLeague = league;
 
   if (!league) {
-    document.getElementById("leagueName").innerText = "Liga no encontrada";
-    document.getElementById("leagueDetail").innerHTML = "Liga no encontrada.";
+    document.getElementById(
+      "leagueName"
+    ).innerText = "Liga no encontrada";
+
+    document.getElementById(
+      "leagueDetail"
+    ).innerHTML = "Liga no encontrada.";
+
     return;
   }
 
   window.leagueStatus = league.status;
 
-  document.getElementById("leagueName").innerText = league.name;
-  document.getElementById("leagueDetail").innerHTML = `
-    ${league.category || "Sin categoría"} · ${league.gender || "Sin género"} · ${league.format || "Formato no definido"}
+  document.getElementById(
+    "leagueName"
+  ).innerText = league.name;
+
+  document.getElementById(
+    "leagueDetail"
+  ).innerHTML = `
+    ${league.category || "Sin categoría"} ·
+    ${league.gender || "Sin género"} ·
+    ${league.format || "Formato no definido"}
   `;
+
+  document.getElementById(
+    "groupCount"
+  ).value = String(
+    league.group_count || 1
+  );
+
+  document.getElementById(
+    "courtsCount"
+  ).value = String(
+    league.courts_count || 1
+  );
+
+  document.getElementById(
+    "scoringMode"
+  ).value =
+    league.scoring_mode || "match_win_3";
+
+  document.getElementById(
+    "playoffFormat"
+  ).value =
+    league.playoff_format || "gold_silver";
+
+  document.getElementById(
+    "goldQualifiers"
+  ).value = String(
+    league.gold_qualifiers ?? 4
+  );
+
+  document.getElementById(
+    "silverQualifiers"
+  ).value = String(
+    league.silver_qualifiers ?? 4
+  );
+
+  updatePlayoffFields();
+  updateConfigurationState();
+}
+
+function updatePlayoffFields() {
+  const playoffFormat =
+    document.getElementById(
+      "playoffFormat"
+    ).value;
+
+  const visible =
+    playoffFormat === "gold_silver";
+
+  document.getElementById(
+    "goldQualifiersField"
+  ).style.display =
+    visible ? "block" : "none";
+
+  document.getElementById(
+    "silverQualifiersField"
+  ).style.display =
+    visible ? "block" : "none";
+}
+
+
+function updateConfigurationState() {
+  const fixtureExists =
+    currentMatches.length > 0;
+
+  const fields = [
+    "groupCount",
+    "courtsCount",
+    "scoringMode",
+    "playoffFormat",
+    "goldQualifiers",
+    "silverQualifiers"
+  ];
+
+  fields.forEach(id => {
+    const element =
+      document.getElementById(id);
+
+    if (element) {
+      element.disabled = fixtureExists;
+    }
+  });
+
+  const saveButton =
+    document.getElementById(
+      "saveConfigurationButton"
+    );
+
+  const fixtureButton =
+    document.getElementById(
+      "generateFixtureButton"
+    );
+
+  if (saveButton) {
+    saveButton.disabled = fixtureExists;
+  }
+
+  if (fixtureButton) {
+    fixtureButton.disabled = fixtureExists;
+  }
+
+  const message =
+    document.getElementById(
+      "configurationMessage"
+    );
+
+  if (fixtureExists) {
+    message.textContent =
+      "La configuración quedó bloqueada porque " +
+      "el fixture ya fue generado.";
+  } else {
+    message.textContent =
+      "Guarda la configuración antes de generar " +
+      "el fixture.";
+  }
+}
+
+
+async function saveLeagueConfiguration(
+  showSuccessMessage = true
+) {
+  const groupCount = Number(
+    document.getElementById(
+      "groupCount"
+    ).value
+  );
+
+  const courtsCount = Number(
+    document.getElementById(
+      "courtsCount"
+    ).value
+  );
+
+  const scoringMode =
+    document.getElementById(
+      "scoringMode"
+    ).value;
+
+  const playoffFormat =
+    document.getElementById(
+      "playoffFormat"
+    ).value;
+
+  const goldQualifiers =
+    playoffFormat === "gold_silver"
+      ? 4
+      : 0;
+
+  const silverQualifiers =
+    playoffFormat === "gold_silver"
+      ? 4
+      : 0;
+
+  if (
+    !Number.isInteger(groupCount) ||
+    groupCount < 1 ||
+    groupCount > 2
+  ) {
+    alert(
+      "La cantidad de grupos debe ser 1 o 2."
+    );
+    return false;
+  }
+
+  if (
+    !Number.isInteger(courtsCount) ||
+    courtsCount < 1
+  ) {
+    alert(
+      "La cantidad de canchas debe ser al menos 1."
+    );
+    return false;
+  }
+
+  const response = await fetch(
+    `${API_URL}/leagues/${leagueId}/configuration`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        group_count: groupCount,
+        courts_count: courtsCount,
+        scoring_mode: scoringMode,
+        playoff_format: playoffFormat,
+        gold_qualifiers: goldQualifiers,
+        silver_qualifiers: silverQualifiers
+      })
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(
+      result.detail ||
+      "No se pudo guardar la configuración."
+    );
+    return false;
+  }
+
+  currentLeague = result.league;
+
+  if (showSuccessMessage) {
+    alert("✅ Configuración guardada.");
+  }
+
+  return true;
 }
 
 async function loadPairs() {
@@ -509,75 +858,121 @@ async function loadPairs() {
 }
 
 async function generateFixture() {
-  const matchesResponse = await fetch(`${API_URL}/leagues/${leagueId}/matches`);
-  const existingMatches = await matchesResponse.json();
-
-  if (existingMatches.length > 0) {
+  if (currentMatches.length > 0) {
     alert("El fixture ya fue generado.");
     return;
   }
 
-  const response = await fetch(`${API_URL}/leagues/${leagueId}/generate-fixture`, {
-    method: "POST"
-  });
+  const confirmed = confirm(
+    "¿Guardar esta configuración y generar " +
+    "el fixture?\n\n" +
+    "Después de generarlo no podrás cambiar " +
+    "los grupos ni el sistema de puntuación."
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  const configurationSaved =
+    await saveLeagueConfiguration(false);
+
+  if (!configurationSaved) {
+    return;
+  }
+
+  const response = await fetch(
+    `${API_URL}/leagues/${leagueId}/generate-fixture`,
+    {
+      method: "POST"
+    }
+  );
 
   const result = await response.json();
 
   if (!response.ok) {
-    alert(result.detail || "No se pudo generar fixture.");
+    alert(
+      result.detail ||
+      "No se pudo generar el fixture."
+    );
     return;
   }
 
-  const notification = result.notification || {};
-  const emailsSent = notification.emails_sent || 0;
-  const withoutEmail =
-    notification.players_without_email?.length || 0;
-  const errors =
-    notification.errors?.length || 0;
+  alert(
+    "✅ Fixture generado\n" +
+    `Grupos: ${result.configuration?.group_count || "-"}\n` +
+    `Jornadas: ${result.rounds_created || 0}\n` +
+    `Partidos: ${result.matches_created || 0}`
+  );
 
-  let message = "✅ Resultado guardado correctamente.";
-
-  if (notification.sent) {
-    message += `\nCorreos enviados: ${emailsSent}.`;
-
-    if (withoutEmail > 0) {
-      message += `\nJugadores sin correo: ${withoutEmail}.`;
-    }
-
-    if (errors > 0) {
-      message += `\nErrores de envío: ${errors}.`;
-    }
-  } else {
-    message += "\nNo se reenviaron notificaciones.";
-  }
-
-  alert(message);
   await refreshAll();
-
 }
+
 
 async function loadMatches() {
-  const response = await fetch(`${API_URL}/leagues/${leagueId}/matches`);
+  const response = await fetch(
+    `${API_URL}/leagues/${leagueId}/matches`
+  );
+
   const matches = await response.json();
-  currentMatches = matches;
 
-  const regularMatches = matches.filter(m => m.phase !== "playoff");
-  const container = document.getElementById("matchesList");
-
-  if (regularMatches.length === 0) {
-    container.innerHTML = `<div class="meta">Aún no hay partidos generados.</div>`;
+  if (!response.ok) {
+    document.getElementById(
+      "matchesList"
+    ).innerHTML = `
+      <div class="meta">
+        No se pudieron cargar los partidos.
+      </div>
+    `;
     return;
   }
 
-  const grouped = groupBy(regularMatches, m => `Ronda ${m.round_number || 1}`);
+  currentMatches = matches;
 
-  container.innerHTML = Object.entries(grouped).map(([roundName, roundMatches]) => `
-    <div class="round-block">
-      <div class="round-title">${roundName}</div>
-      ${roundMatches.map(renderMatchCard).join("")}
-    </div>
-  `).join("");
+  const regularMatches = matches.filter(
+    match => match.phase !== "playoff"
+  );
+
+  const container =
+    document.getElementById("matchesList");
+
+  if (regularMatches.length === 0) {
+    container.innerHTML = `
+      <div class="meta">
+        Aún no hay partidos generados.
+      </div>
+    `;
+
+    updateConfigurationState();
+    return;
+  }
+
+  const grouped = groupBy(
+    regularMatches,
+    match => (
+      `${match.group_name || "Grupo 1"} · ` +
+      `Jornada ${match.round_number || 1}`
+    )
+  );
+
+  container.innerHTML =
+    Object.entries(grouped)
+      .map(([title, roundMatches]) => `
+        <div class="round-block">
+          <div class="round-title">
+            ${title}
+          </div>
+
+          ${roundMatches
+            .map(renderMatchCard)
+            .join("")}
+        </div>
+      `)
+      .join("");
+
+  updateConfigurationState();
 }
+
 
 function renderMatchCard(m) {
   const isCompleted = m.status === "completed";
