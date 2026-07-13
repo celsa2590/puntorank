@@ -1766,6 +1766,176 @@ def get_club_leagues(club_id: int):
 
             return cur.fetchall()
 
+@app.patch("/leagues/{league_id}/configuration")
+def update_league_configuration(
+    league_id: int,
+    data: LeagueConfigurationUpdate,
+):
+    allowed_scoring_modes = {
+        "sets_2_plus_match_1",
+        "win_1_no_substitute_penalty",
+        "match_win_3",
+    }
+
+    allowed_playoff_formats = {
+        "gold_silver",
+        "none",
+    }
+
+    if data.group_count < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="La cantidad de grupos debe ser al menos 1",
+        )
+
+    if data.courts_count < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="La cantidad de canchas debe ser al menos 1",
+        )
+
+    if data.scoring_mode not in allowed_scoring_modes:
+        raise HTTPException(
+            status_code=400,
+            detail="Sistema de puntuación no válido",
+        )
+
+    if data.playoff_format not in allowed_playoff_formats:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato de playoffs no válido",
+        )
+
+    if data.gold_qualifiers < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="gold_qualifiers no puede ser negativo",
+        )
+
+    if data.silver_qualifiers < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="silver_qualifiers no puede ser negativo",
+        )
+
+    if (
+        data.playoff_format == "gold_silver"
+        and data.gold_qualifiers != 4
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Por ahora la Copa Oro requiere "
+                "exactamente 4 clasificados"
+            ),
+        )
+
+    if (
+        data.playoff_format == "gold_silver"
+        and data.silver_qualifiers != 4
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Por ahora la Copa Plata requiere "
+                "exactamente 4 clasificados"
+            ),
+        )
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    status
+                FROM league_seasons
+                WHERE id = %s
+                FOR UPDATE;
+                """,
+                (league_id,),
+            )
+
+            league = cur.fetchone()
+
+            if not league:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Liga no encontrada",
+                )
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS matches_count
+                FROM league_matches
+                WHERE league_id = %s;
+                """,
+                (league_id,),
+            )
+
+            matches_count = cur.fetchone()["matches_count"]
+
+            if matches_count > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No puedes cambiar la configuración "
+                        "después de generar el fixture"
+                    ),
+                )
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS pairs_count
+                FROM league_pairs
+                WHERE league_id = %s;
+                """,
+                (league_id,),
+            )
+
+            pairs_count = cur.fetchone()["pairs_count"]
+
+            if pairs_count > 0 and data.group_count > pairs_count:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No puede haber más grupos que parejas"
+                    ),
+                )
+
+            cur.execute(
+                """
+                UPDATE league_seasons
+                SET
+                    group_count = %s,
+                    courts_count = %s,
+                    scoring_mode = %s,
+                    playoff_format = %s,
+                    gold_qualifiers = %s,
+                    silver_qualifiers = %s
+                WHERE id = %s
+                RETURNING *;
+                """,
+                (
+                    data.group_count,
+                    data.courts_count,
+                    data.scoring_mode,
+                    data.playoff_format,
+                    data.gold_qualifiers,
+                    data.silver_qualifiers,
+                    league_id,
+                ),
+            )
+
+            updated = cur.fetchone()
+            conn.commit()
+
+            return {
+                "message": "Configuración guardada",
+                "league": updated,
+            }
+
+
 @app.post("/leagues/{league_id}/generate-fixture")
 def generate_league_fixture(league_id: int):
     with get_conn() as conn:
@@ -1774,102 +1944,240 @@ def generate_league_fixture(league_id: int):
             cur.execute(
                 """
                 SELECT
-                    COALESCE(group_name, 'Grupo único') AS group_name,
-                    ARRAY_AGG(id ORDER BY id) AS pair_ids
-                FROM league_pairs
-                WHERE league_id = %s
-                GROUP BY COALESCE(group_name, 'Grupo único')
-                ORDER BY COALESCE(group_name, 'Grupo único');
+                    id,
+                    status,
+                    group_count,
+                    courts_count,
+                    scoring_mode,
+                    playoff_format,
+                    gold_qualifiers,
+                    silver_qualifiers
+                FROM league_seasons
+                WHERE id = %s
+                FOR UPDATE;
                 """,
                 (league_id,),
             )
 
-            groups = cur.fetchall()
+            league = cur.fetchone()
 
-            if not groups:
+            if not league:
                 raise HTTPException(
-                    status_code=400,
-                    detail="No hay parejas inscritas en esta liga",
+                    status_code=404,
+                    detail="Liga no encontrada",
                 )
 
             cur.execute(
                 """
-                DELETE FROM league_matches
+                SELECT COUNT(*) AS existing
+                FROM league_matches
                 WHERE league_id = %s;
                 """,
                 (league_id,),
             )
 
+            existing = cur.fetchone()["existing"]
+
+            if existing > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El fixture ya fue generado",
+                )
+
+            cur.execute(
+                """
+                SELECT id
+                FROM league_pairs
+                WHERE league_id = %s
+                ORDER BY id;
+                """,
+                (league_id,),
+            )
+
+            pair_rows = cur.fetchall()
+            pair_ids = [row["id"] for row in pair_rows]
+
+            if len(pair_ids) < 2:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Se necesitan al menos 2 parejas "
+                        "para generar el fixture"
+                    ),
+                )
+
+            group_count = int(league["group_count"] or 1)
+            courts_count = int(league["courts_count"] or 1)
+
+            if group_count > len(pair_ids):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No puede haber más grupos que parejas"
+                    ),
+                )
+
+            # Distribución balanceada:
+            # pareja 1 -> grupo 1
+            # pareja 2 -> grupo 2
+            # ...
+            # y vuelve a comenzar.
+            grouped_pairs = {
+                index: []
+                for index in range(1, group_count + 1)
+            }
+
+            for index, pair_id in enumerate(pair_ids):
+                group_number = (index % group_count) + 1
+                grouped_pairs[group_number].append(pair_id)
+
+                cur.execute(
+                    """
+                    UPDATE league_pairs
+                    SET group_name = %s
+                    WHERE id = %s;
+                    """,
+                    (
+                        f"Grupo {group_number}",
+                        pair_id,
+                    ),
+                )
+
+            groups_with_too_few_pairs = [
+                group_number
+                for group_number, pairs in grouped_pairs.items()
+                if len(pairs) < 2
+            ]
+
+            if groups_with_too_few_pairs:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Cada grupo necesita al menos "
+                        "2 parejas"
+                    ),
+                )
+
             total_matches_created = 0
             max_rounds_created = 0
+            groups_summary = []
 
-            for group in groups:
-                group_name = group["group_name"]
-                pairs = group["pair_ids"]
-
-                if len(pairs) < 2:
-                    continue
-
+            for group_number, pairs in grouped_pairs.items():
                 pairs_work = pairs.copy()
 
+                # En grupos impares se agrega un descanso.
                 if len(pairs_work) % 2 != 0:
                     pairs_work.append(None)
 
-                n = len(pairs_work)
-                rounds_needed = n - 1
-                matches_per_round = n // 2
-                max_rounds_created = max(max_rounds_created, rounds_needed)
+                participant_slots = len(pairs_work)
+                rounds_needed = participant_slots - 1
+                matches_per_round = participant_slots // 2
 
-                for round_number in range(1, rounds_needed + 1):
-                    for i in range(matches_per_round):
-                        pair_a = pairs_work[i]
-                        pair_b = pairs_work[n - 1 - i]
+                max_rounds_created = max(
+                    max_rounds_created,
+                    rounds_needed,
+                )
 
-                        if pair_a is not None and pair_b is not None:
-                            cur.execute(
-                                """
-                                INSERT INTO league_matches
-                                    (
-                                        league_id,
-                                        round_number,
-                                        pair_a_id,
-                                        pair_b_id,
-                                        phase,
-                                        status
-                                    )
-                                VALUES
-                                    (%s, %s, %s, %s, 'regular', 'scheduled');
-                                """,
+                group_matches_created = 0
+
+                for round_number in range(
+                    1,
+                    rounds_needed + 1,
+                ):
+                    round_match_index = 0
+
+                    for index in range(matches_per_round):
+                        pair_a = pairs_work[index]
+                        pair_b = pairs_work[
+                            participant_slots - 1 - index
+                        ]
+
+                        if pair_a is None or pair_b is None:
+                            continue
+
+                        round_match_index += 1
+
+                        assigned_court = None
+
+                        if round_match_index <= courts_count:
+                            assigned_court = (
+                                f"Cancha {round_match_index}"
+                            )
+
+                        cur.execute(
+                            """
+                            INSERT INTO league_matches
                                 (
                                     league_id,
                                     round_number,
-                                    pair_a,
-                                    pair_b,
-                                ),
-                            )
+                                    pair_a_id,
+                                    pair_b_id,
+                                    phase,
+                                    status,
+                                    court
+                                )
+                            VALUES
+                                (
+                                    %s,
+                                    %s,
+                                    %s,
+                                    %s,
+                                    'regular',
+                                    'scheduled',
+                                    %s
+                                );
+                            """,
+                            (
+                                league_id,
+                                round_number,
+                                pair_a,
+                                pair_b,
+                                assigned_court,
+                            ),
+                        )
 
-                            total_matches_created += 1
+                        total_matches_created += 1
+                        group_matches_created += 1
 
+                    # Algoritmo circle method.
                     pairs_work = (
                         [pairs_work[0]]
                         + [pairs_work[-1]]
                         + pairs_work[1:-1]
                     )
 
+                groups_summary.append(
+                    {
+                        "group_name": f"Grupo {group_number}",
+                        "pairs": len(pairs),
+                        "rounds": rounds_needed,
+                        "matches": group_matches_created,
+                    }
+                )
+
             cur.execute(
                 """
                 UPDATE league_seasons
                 SET status = 'scheduled'
-                WHERE id = %s;
+                WHERE id = %s
+                RETURNING *;
                 """,
                 (league_id,),
             )
 
+            updated_league = cur.fetchone()
             conn.commit()
 
             return {
-                "message": "Fixture generado por grupos",
-                "groups": len(groups),
+                "message": "Fixture generado correctamente",
+                "league": updated_league,
+                "configuration": {
+                    "group_count": group_count,
+                    "courts_count": courts_count,
+                    "scoring_mode": league["scoring_mode"],
+                    "playoff_format": league["playoff_format"],
+                },
+                "groups": groups_summary,
                 "rounds_created": max_rounds_created,
                 "matches_created": total_matches_created,
             }
@@ -2588,53 +2896,65 @@ def save_league_match_result(
                         }
                     )
 
-            pair_a_points = (
-                sets_a * 2
-                + (
-                    1
-                    if (
-                        data.winner_pair_id
-                        == match["pair_a_id"]
-                    )
-                    else 0
-                )
-                if (
-                    match["scoring_mode"]
-                    == "sets_2_plus_match_1"
-                )
-                else (
-                    3
-                    if (
-                        data.winner_pair_id
-                        == match["pair_a_id"]
-                    )
-                    else 0
-                )
-            )
 
-            pair_b_points = (
-                sets_b * 2
-                + (
+
+
+            if match["scoring_mode"] == "sets_2_plus_match_1":
+                pair_a_points = (
+                    sets_a * 2
+                    + (
+                        1
+                        if data.winner_pair_id == match["pair_a_id"]
+                        else 0
+                    )
+                )
+
+                pair_b_points = (
+                    sets_b * 2
+                    + (
+                        1
+                        if data.winner_pair_id == match["pair_b_id"]
+                        else 0
+                    )
+                )
+
+                if data.pair_a_used_substitute:
+                    pair_a_points -= 1
+
+                if data.pair_b_used_substitute:
+                    pair_b_points -= 1
+
+            elif (
+                match["scoring_mode"]
+                == "win_1_no_substitute_penalty"
+            ):
+                pair_a_points = (
                     1
-                    if (
-                        data.winner_pair_id
-                        == match["pair_b_id"]
-                    )
+                    if data.winner_pair_id == match["pair_a_id"]
                     else 0
                 )
-                if (
-                    match["scoring_mode"]
-                    == "sets_2_plus_match_1"
+
+                pair_b_points = (
+                    1
+                    if data.winner_pair_id == match["pair_b_id"]
+                    else 0
                 )
-                else (
+
+            else:
+                pair_a_points = (
                     3
-                    if (
-                        data.winner_pair_id
-                        == match["pair_b_id"]
-                    )
+                    if data.winner_pair_id == match["pair_a_id"]
                     else 0
                 )
-            )
+
+                pair_b_points = (
+                    3
+                    if data.winner_pair_id == match["pair_b_id"]
+                    else 0
+                )
+
+
+
 
             if data.pair_a_used_substitute:
                 pair_a_points -= 1
@@ -2679,6 +2999,11 @@ def get_league_standings(league_id: int):
             cur.execute(
                 """
                 SELECT
+                    COALESCE(
+                        lp.group_name,
+                        'Grupo 1'
+                    ) AS group_name,
+
                     lp.id AS pair_id,
                     lp.points_adjustment,
 
@@ -2714,20 +3039,18 @@ def get_league_standings(league_id: int):
                                         = 'sets_2_plus_match_1'
                                     )
                                     THEN
-                                        2 * (
-                                            CASE
+                                        (
+                                            2 * CASE
                                                 WHEN lm.pair_a_id = lp.id
                                                 THEN COALESCE(
                                                     lm.pair_a_sets_won,
                                                     0
                                                 )
-
                                                 WHEN lm.pair_b_id = lp.id
                                                 THEN COALESCE(
                                                     lm.pair_b_sets_won,
                                                     0
                                                 )
-
                                                 ELSE 0
                                             END
                                         )
@@ -2738,12 +3061,28 @@ def get_league_standings(league_id: int):
                                             ELSE 0
                                         END
 
-                                    ELSE
+                                    WHEN (
+                                        ls.scoring_mode
+                                        = 'win_1_no_substitute_penalty'
+                                    )
+                                    THEN
+                                        CASE
+                                            WHEN lm.winner_pair_id = lp.id
+                                            THEN 1
+                                            ELSE 0
+                                        END
+
+                                    WHEN (
+                                        ls.scoring_mode = 'match_win_3'
+                                    )
+                                    THEN
                                         CASE
                                             WHEN lm.winner_pair_id = lp.id
                                             THEN 3
                                             ELSE 0
                                         END
+
+                                    ELSE 0
                                 END
                             ),
                             0
@@ -2755,6 +3094,12 @@ def get_league_standings(league_id: int):
                             SUM(
                                 CASE
                                     WHEN lm.status <> 'completed'
+                                    THEN 0
+
+                                    WHEN (
+                                        ls.scoring_mode
+                                        <> 'sets_2_plus_match_1'
+                                    )
                                     THEN 0
 
                                     WHEN (
@@ -2833,6 +3178,12 @@ def get_league_standings(league_id: int):
                                 THEN 0
 
                                 WHEN (
+                                    ls.scoring_mode
+                                    <> 'sets_2_plus_match_1'
+                                )
+                                THEN 0
+
+                                WHEN (
                                     lm.pair_a_id = lp.id
                                     AND lm.pair_a_used_substitute = TRUE
                                 )
@@ -2867,11 +3218,13 @@ def get_league_standings(league_id: int):
                         OR lm.pair_b_id = lp.id
                     )
                     AND lm.league_id = lp.league_id
+                    AND lm.phase = 'regular'
 
                 WHERE lp.league_id = %s
 
                 GROUP BY
                     lp.id,
+                    lp.group_name,
                     lp.pair_name,
                     lp.points_adjustment,
                     p1.name,
@@ -2879,6 +3232,7 @@ def get_league_standings(league_id: int):
                     ls.scoring_mode
 
                 ORDER BY
+                    COALESCE(lp.group_name, 'Grupo 1'),
                     points DESC,
                     wins DESC,
                     sets_won DESC,

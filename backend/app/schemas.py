@@ -53,6 +53,14 @@ class LeagueCreate(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
 
+class LeagueConfigurationUpdate(BaseModel):
+    group_count: int = 1
+    courts_count: int = 1
+    scoring_mode: str = "match_win_3"
+    playoff_format: str = "gold_silver"
+    gold_qualifiers: int = 4
+    silver_qualifiers: int = 4
+
 class AmericanoAddPlayer(BaseModel):
     player_id: int | None = None
     name: str | None = None
