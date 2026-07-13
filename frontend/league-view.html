@@ -596,6 +596,38 @@
   }
 }
 
+.match-card-header {
+  cursor: pointer;
+  user-select: none;
+}
+
+.match-card-header:hover {
+  background: #f6f8f6;
+}
+
+.match-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.match-toggle-icon {
+  display: inline-block;
+  font-size: 18px;
+  transition: transform 0.2s ease;
+}
+
+.match-card.expanded .match-toggle-icon {
+  transform: rotate(90deg);
+}
+
+.match-card-body {
+  display: none;
+}
+
+.match-card.expanded .match-card-body {
+  display: block;
+}
 
 
   </style>
@@ -1281,9 +1313,14 @@ function renderMatchCard(m) {
     }
 
     return `
-      <div class="match-card">
-        <div class="match-card-header">
-          <div>
+      <div class="match-card" id="match_card_${m.id}">
+        <div
+          class="match-card-header"
+          onclick="toggleMatchCard(${m.id})"
+        >
+          <div class="match-toggle">
+            <span class="match-toggle-icon">▶</span>
+
             <div class="match-title">
               ${m.pair_a_name}
               <span class="vs">vs</span>
@@ -1296,68 +1333,70 @@ function renderMatchCard(m) {
           </span>
         </div>
 
-        <div class="completed-summary">
-          <div class="completed-summary-grid">
-            <div class="completed-summary-item">
-              <div class="completed-summary-label">
-                Resultado
+        <div class="match-card-body">
+          <div class="completed-summary">
+            <div class="completed-summary-grid">
+              <div class="completed-summary-item">
+                <div class="completed-summary-label">
+                  Resultado
+                </div>
+
+                <div class="completed-summary-value">
+                  ${m.score || "Sin marcador"}
+                </div>
               </div>
 
-              <div class="completed-summary-value">
-                ${m.score || "Sin marcador"}
-              </div>
-            </div>
+              <div class="completed-summary-item">
+                <div class="completed-summary-label">
+                  Ganadora
+                </div>
 
-            <div class="completed-summary-item">
-              <div class="completed-summary-label">
-                Ganadora
-              </div>
-
-              <div
-                class="
-                  completed-summary-value
-                  completed-winner
-                "
-              >
-                🏆 ${winnerName || "Sin definir"}
-              </div>
-            </div>
-
-            <div class="completed-summary-item">
-              <div class="completed-summary-label">
-                Fecha y hora
+                <div
+                  class="
+                    completed-summary-value
+                    completed-winner
+                  "
+                >
+                  🏆 ${winnerName || "Sin definir"}
+                </div>
               </div>
 
-              <div class="completed-summary-value">
-                ${
-                  m.scheduled_at
-                    ? formatLeagueDateTime(m.scheduled_at)
-                    : "Sin programación"
-                }
-              </div>
-            </div>
+              <div class="completed-summary-item">
+                <div class="completed-summary-label">
+                  Fecha y hora
+                </div>
 
-            <div class="completed-summary-item">
-              <div class="completed-summary-label">
-                Cancha
-              </div>
-
-              <div class="completed-summary-value">
-                ${m.court || "Sin cancha"}
-              </div>
-            </div>
-
-            <div class="completed-summary-item">
-              <div class="completed-summary-label">
-                Uso de parche
+                <div class="completed-summary-value">
+                  ${
+                    m.scheduled_at
+                      ? formatLeagueDateTime(m.scheduled_at)
+                      : "Sin programación"
+                  }
+                </div>
               </div>
 
-              <div class="completed-summary-value">
-                ${
-                  substituteText.length
-                    ? substituteText.join(" / ")
-                    : "Ninguna pareja"
-                }
+              <div class="completed-summary-item">
+                <div class="completed-summary-label">
+                  Cancha
+                </div>
+
+                <div class="completed-summary-value">
+                  ${m.court || "Sin cancha"}
+                </div>
+              </div>
+
+              <div class="completed-summary-item">
+                <div class="completed-summary-label">
+                  Uso de parche
+                </div>
+
+                <div class="completed-summary-value">
+                  ${
+                    substituteText.length
+                      ? substituteText.join(" / ")
+                      : "Ninguna pareja"
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -1370,9 +1409,14 @@ function renderMatchCard(m) {
     window.leagueStatus === "completed";
 
   return `
-    <div class="match-card">
-      <div class="match-card-header">
-        <div>
+    <div class="match-card" id="match_card_${m.id}">
+      <div
+        class="match-card-header"
+        onclick="toggleMatchCard(${m.id})"
+      >
+        <div class="match-toggle">
+          <span class="match-toggle-icon">▶</span>
+
           <div class="match-title">
             ${m.pair_a_name}
             <span class="vs">vs</span>
@@ -1385,211 +1429,242 @@ function renderMatchCard(m) {
         </span>
       </div>
 
-      <div class="match-management-grid">
+      <div class="match-card-body">
+        <div class="match-management-grid">
 
-        <!-- PROGRAMACIÓN -->
-        <section class="management-panel schedule-panel">
-          <div class="management-panel-title">
-            📅 Programación
-          </div>
+          <section class="management-panel schedule-panel">
+            <div class="management-panel-title">
+              📅 Programación
+            </div>
 
-          <div class="management-panel-help">
-            Define cuándo y dónde se jugará el partido.
-            Esta acción no registra el resultado.
-          </div>
+            <div class="management-panel-help">
+              Define cuándo y dónde se jugará el partido.
+              Esta acción no registra el resultado.
+            </div>
 
-          <div class="form-field">
-            <label for="scheduled_${m.id}">
-              Fecha y hora
-            </label>
+            <div class="form-field">
+              <label for="scheduled_${m.id}">
+                Fecha y hora
+              </label>
 
-            <input
-              type="datetime-local"
-              id="scheduled_${m.id}"
-              value="${
-                m.scheduled_at
-                  ? m.scheduled_at.slice(0, 16)
-                  : ""
-              }"
-              ${leagueIsCompleted ? "disabled" : ""}
-            >
-          </div>
-
-          <div class="form-field">
-            <label for="court_${m.id}">
-              Cancha
-            </label>
-
-            <input
-              id="court_${m.id}"
-              placeholder="Ej: Cancha 1"
-              value="${m.court || ""}"
-              ${leagueIsCompleted ? "disabled" : ""}
-            >
-          </div>
-
-          <label class="inline-checkbox">
-            <input
-              type="checkbox"
-              id="notify_${m.id}"
-              ${leagueIsCompleted ? "disabled" : ""}
-            >
-
-            <span>
-              Notificar a las jugadoras por correo
-            </span>
-          </label>
-
-          <button
-            type="button"
-            class="panel-button schedule-button"
-            onclick="saveLeagueSchedule(${m.id})"
-            ${leagueIsCompleted ? "disabled" : ""}
-          >
-            Guardar programación
-          </button>
-
-          <div
-            id="schedule_message_${m.id}"
-            class="match-inline-message"
-          ></div>
-        </section>
-
-        <!-- RESULTADO -->
-        <section class="management-panel result-panel">
-          <div class="management-panel-title">
-            🏆 Resultado
-          </div>
-
-          <div class="management-panel-help">
-            Ingresa el marcador, selecciona la pareja
-            ganadora y registra el resultado.
-          </div>
-
-          <div class="form-field">
-            <label for="score_${m.id}">
-              Marcador
-            </label>
-
-            <input
-              id="score_${m.id}"
-              placeholder="Ej: 6-4 3-6 6-2"
-              value="${m.score || ""}"
-              oninput="handleLeagueScoreInput(${m.id})"
-              ${leagueIsCompleted ? "disabled" : ""}
-            >
-          </div>
-
-          <div
-            id="detected_winner_${m.id}"
-            class="result-detected"
-          ></div>
-
-          <div class="winner-label">
-            ¿Qué pareja ganó?
-          </div>
-
-          <div class="winner-options">
-            <label
-              id="winner_label_${m.id}_${m.pair_a_id}"
-              class="winner-option"
-            >
               <input
-                type="radio"
-                name="winner_${m.id}"
-                value="${m.pair_a_id}"
-                onchange="
-                  updateWinnerSelection(
-                    ${m.id},
-                    ${m.pair_a_id}
-                  )
-                "
+                type="datetime-local"
+                id="scheduled_${m.id}"
+                value="${
+                  m.scheduled_at
+                    ? m.scheduled_at.slice(0, 16)
+                    : ""
+                }"
+                ${leagueIsCompleted ? "disabled" : ""}
               >
+            </div>
 
-              <span>
-                🏆 ${m.pair_a_name}
-              </span>
-            </label>
+            <div class="form-field">
+              <label for="court_${m.id}">
+                Cancha
+              </label>
 
-            <label
-              id="winner_label_${m.id}_${m.pair_b_id}"
-              class="winner-option"
-            >
               <input
-                type="radio"
-                name="winner_${m.id}"
-                value="${m.pair_b_id}"
-                onchange="
-                  updateWinnerSelection(
-                    ${m.id},
-                    ${m.pair_b_id}
-                  )
-                "
+                id="court_${m.id}"
+                placeholder="Ej: Cancha 1"
+                value="${m.court || ""}"
+                ${leagueIsCompleted ? "disabled" : ""}
               >
-
-              <span>
-                🏆 ${m.pair_b_name}
-              </span>
-            </label>
-          </div>
-
-          <div class="substitute-box">
-            <div class="substitute-title">
-              ¿Alguna pareja utilizó parche?
             </div>
 
             <label class="inline-checkbox">
               <input
                 type="checkbox"
-                id="substitute_a_${m.id}"
-                ${
-                  m.pair_a_used_substitute
-                    ? "checked"
-                    : ""
-                }
+                id="notify_${m.id}"
+                ${leagueIsCompleted ? "disabled" : ""}
               >
 
               <span>
-                ${m.pair_a_name} utilizó parche
+                Notificar a las jugadoras por correo
               </span>
             </label>
 
-            <label class="inline-checkbox">
+            <button
+              type="button"
+              class="panel-button schedule-button"
+              onclick="saveLeagueSchedule(${m.id})"
+              ${leagueIsCompleted ? "disabled" : ""}
+            >
+              Guardar programación
+            </button>
+
+            <div
+              id="schedule_message_${m.id}"
+              class="match-inline-message"
+            ></div>
+          </section>
+
+          <section class="management-panel result-panel">
+            <div class="management-panel-title">
+              🏆 Resultado
+            </div>
+
+            <div class="management-panel-help">
+              Ingresa el marcador, selecciona la pareja
+              ganadora y registra el resultado.
+            </div>
+
+            <div class="form-field">
+              <label for="score_${m.id}">
+                Marcador
+              </label>
+
               <input
-                type="checkbox"
-                id="substitute_b_${m.id}"
-                ${
-                  m.pair_b_used_substitute
-                    ? "checked"
-                    : ""
-                }
+                id="score_${m.id}"
+                placeholder="Ej: 6-4 3-6 6-2"
+                value="${m.score || ""}"
+                oninput="handleLeagueScoreInput(${m.id})"
+                ${leagueIsCompleted ? "disabled" : ""}
               >
+            </div>
 
-              <span>
-                ${m.pair_b_name} utilizó parche
-              </span>
-            </label>
-          </div>
+            <div
+              id="detected_winner_${m.id}"
+              class="result-detected"
+            ></div>
 
-          <button
-            type="button"
-            id="result_button_${m.id}"
-            class="panel-button result-button"
-            onclick="saveLeagueResult(${m.id})"
-            ${leagueIsCompleted ? "disabled" : ""}
-          >
-            Registrar resultado
-          </button>
+            <div class="winner-label">
+              ¿Qué pareja ganó?
+            </div>
 
-          <div
-            id="result_message_${m.id}"
-            class="match-inline-message"
-          ></div>
-        </section>
+            <div class="winner-options">
+              <label
+                id="winner_label_${m.id}_${m.pair_a_id}"
+                class="winner-option"
+              >
+                <input
+                  type="radio"
+                  name="winner_${m.id}"
+                  value="${m.pair_a_id}"
+                  onchange="
+                    updateWinnerSelection(
+                      ${m.id},
+                      ${m.pair_a_id}
+                    )
+                  "
+                >
+
+                <span>
+                  🏆 ${m.pair_a_name}
+                </span>
+              </label>
+
+              <label
+                id="winner_label_${m.id}_${m.pair_b_id}"
+                class="winner-option"
+              >
+                <input
+                  type="radio"
+                  name="winner_${m.id}"
+                  value="${m.pair_b_id}"
+                  onchange="
+                    updateWinnerSelection(
+                      ${m.id},
+                      ${m.pair_b_id}
+                    )
+                  "
+                >
+
+                <span>
+                  🏆 ${m.pair_b_name}
+                </span>
+              </label>
+            </div>
+
+            <div class="substitute-box">
+              <div class="substitute-title">
+                ¿Alguna pareja utilizó parche?
+              </div>
+
+              <label class="inline-checkbox">
+                <input
+                  type="checkbox"
+                  id="substitute_a_${m.id}"
+                  ${
+                    m.pair_a_used_substitute
+                      ? "checked"
+                      : ""
+                  }
+                >
+
+                <span>
+                  ${m.pair_a_name} utilizó parche
+                </span>
+              </label>
+
+              <label class="inline-checkbox">
+                <input
+                  type="checkbox"
+                  id="substitute_b_${m.id}"
+                  ${
+                    m.pair_b_used_substitute
+                      ? "checked"
+                      : ""
+                  }
+                >
+
+                <span>
+                  ${m.pair_b_name} utilizó parche
+                </span>
+              </label>
+            </div>
+
+            <button
+              type="button"
+              id="result_button_${m.id}"
+              class="panel-button result-button"
+              onclick="saveLeagueResult(${m.id})"
+              ${leagueIsCompleted ? "disabled" : ""}
+            >
+              Registrar resultado
+            </button>
+
+            <div
+              id="result_message_${m.id}"
+              class="match-inline-message"
+            ></div>
+          </section>
+        </div>
       </div>
     </div>
   `;
 }
+
+function toggleMatchCard(matchId) {
+  const card = document.getElementById(
+    `match_card_${matchId}`
+  );
+
+  if (!card) {
+    return;
+  }
+
+  const wasExpanded =
+    card.classList.contains("expanded");
+
+  document
+    .querySelectorAll(".match-card.expanded")
+    .forEach(openCard => {
+      openCard.classList.remove("expanded");
+    });
+
+  if (!wasExpanded) {
+    card.classList.add("expanded");
+
+    setTimeout(() => {
+      card.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
+    }, 100);
+  }
+}
+
 
 function formatLeagueDateTime(value) {
   if (!value) {
