@@ -144,7 +144,7 @@
 
     const formatNames = {
       4: "Cuadrangular",
-      6: "Hexagonal"
+      6: "Hexagonal",
       8: "Octagonal" 
     };
 
@@ -422,12 +422,6 @@ function fillPairSelectors(players) {
   });
 }
 
-document.getElementById("pairPlayer1").value = "";
-document.getElementById("pairPlayer2").value = "";
-document.getElementById("pairName").value = "";
-
-await loadPairs();
-
 async function createPair() {
   const player1 = document.getElementById("pairPlayer1").value;
   const player2 = document.getElementById("pairPlayer2").value;
@@ -460,7 +454,10 @@ async function createPair() {
     return;
   }
 
+  document.getElementById("pairPlayer1").value = "";
+  document.getElementById("pairPlayer2").value = "";
   document.getElementById("pairName").value = "";
+
   await loadPairs();
 }
 
@@ -663,7 +660,7 @@ async function finishAmericano() {
   const result = await response.json();
 
   if (!response.ok) {
-    alert(result.detail || "No se pudo finalizar el americano.");
+    alert(result.detail || "No se pudo finalizar el evento.");
     return;
   }
 
@@ -682,8 +679,8 @@ button.style.cursor = "not-allowed";
 
 async function initializePage() {
   await loadAmericano();
-  await loadPairs();
   await loadPlayers();
+  await loadPairs();
   await loadEligiblePlayers();
   await loadMatches();
   await loadStandings();
