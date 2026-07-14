@@ -2343,18 +2343,15 @@ def update_league_configuration(
 def generate_league_fixture(league_id: int):
     with get_conn() as conn:
         with conn.cursor() as cur:
-
+            # Bloquear la liga durante la generación.
             cur.execute(
                 """
                 SELECT
                     id,
+                    name,
                     status,
                     group_count,
-                    courts_count,
-                    scoring_mode,
-                    playoff_format,
-                    gold_qualifiers,
-                    silver_qualifiers
+                    courts_count
                 FROM league_seasons
                 WHERE id = %s
                 FOR UPDATE;
@@ -2370,142 +2367,151 @@ def generate_league_fixture(league_id: int):
                     detail="Liga no encontrada",
                 )
 
+            # Evitar duplicar el fixture.
             cur.execute(
                 """
-                SELECT COUNT(*) AS existing
+                SELECT COUNT(*) AS matches_count
                 FROM league_matches
                 WHERE league_id = %s;
                 """,
                 (league_id,),
             )
 
-            existing = cur.fetchone()["existing"]
+            existing_matches = int(
+                cur.fetchone()["matches_count"] or 0
+            )
 
-            if existing > 0:
+            if existing_matches > 0:
                 raise HTTPException(
                     status_code=400,
-                    detail="El fixture ya fue generado",
+                    detail=(
+                        "La liga ya tiene partidos generados. "
+                        "Debes eliminar el fixture actual antes "
+                        "de volver a generarlo."
+                    ),
                 )
 
+            # Cargar las parejas respetando sus grupos.
             cur.execute(
                 """
-                SELECT id
+                SELECT
+                    id,
+                    pair_name,
+                    COALESCE(
+                        NULLIF(TRIM(group_name), ''),
+                        'Grupo 1'
+                    ) AS group_name
                 FROM league_pairs
                 WHERE league_id = %s
-                ORDER BY id;
+                ORDER BY
+                    COALESCE(
+                        NULLIF(TRIM(group_name), ''),
+                        'Grupo 1'
+                    ),
+                    id;
                 """,
                 (league_id,),
             )
 
-            pair_rows = cur.fetchall()
-            pair_ids = [row["id"] for row in pair_rows]
+            pairs = cur.fetchall()
 
-            if len(pair_ids) < 2:
+            if len(pairs) < 2:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "Se necesitan al menos 2 parejas "
-                        "para generar el fixture"
+                        "La liga necesita al menos dos parejas "
+                        "para generar el fixture."
                     ),
                 )
 
-            group_count = int(league["group_count"] or 1)
-            courts_count = int(league["courts_count"] or 1)
+            # Separar las parejas por grupo.
+            groups: dict[str, list[int]] = {}
 
-            if group_count > len(pair_ids):
+            for pair in pairs:
+                group_name = pair["group_name"]
+
+                if group_name not in groups:
+                    groups[group_name] = []
+
+                groups[group_name].append(pair["id"])
+
+            configured_group_count = int(
+                league["group_count"] or 1
+            )
+
+            if len(groups) != configured_group_count:
                 raise HTTPException(
                     status_code=400,
                     detail=(
-                        "No puede haber más grupos que parejas"
+                        f"La liga está configurada con "
+                        f"{configured_group_count} grupo(s), pero "
+                        f"las parejas están distribuidas en "
+                        f"{len(groups)} grupo(s)."
                     ),
                 )
 
-            # Distribución balanceada:
-            # pareja 1 -> grupo 1
-            # pareja 2 -> grupo 2
-            # ...
-            # y vuelve a comenzar.
-            grouped_pairs = {
-                index: []
-                for index in range(1, group_count + 1)
-            }
+            courts_count = max(
+                1,
+                int(league["courts_count"] or 1),
+            )
 
-            for index, pair_id in enumerate(pair_ids):
-                group_number = (index % group_count) + 1
-                grouped_pairs[group_number].append(pair_id)
+            created_matches = []
+            group_summaries = []
 
-                cur.execute(
-                    """
-                    UPDATE league_pairs
-                    SET group_name = %s
-                    WHERE id = %s;
-                    """,
-                    (
-                        f"Grupo {group_number}",
-                        pair_id,
-                    ),
-                )
+            for group_name in sorted(groups.keys()):
+                group_pair_ids = groups[group_name]
 
-            groups_with_too_few_pairs = [
-                group_number
-                for group_number, pairs in grouped_pairs.items()
-                if len(pairs) < 2
-            ]
+                if len(group_pair_ids) < 2:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"{group_name} necesita al menos "
+                            "dos parejas."
+                        ),
+                    )
 
-            if groups_with_too_few_pairs:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        "Cada grupo necesita al menos "
-                        "2 parejas"
-                    ),
-                )
+                # Método del círculo.
+                # Si el grupo tiene una cantidad impar, se agrega
+                # un descanso representado por None.
+                rotation = group_pair_ids.copy()
 
-            total_matches_created = 0
-            max_rounds_created = 0
-            groups_summary = []
+                if len(rotation) % 2 != 0:
+                    rotation.append(None)
 
-            for group_number, pairs in grouped_pairs.items():
-                pairs_work = pairs.copy()
-
-                # En grupos impares se agrega un descanso.
-                if len(pairs_work) % 2 != 0:
-                    pairs_work.append(None)
-
-                participant_slots = len(pairs_work)
-                rounds_needed = participant_slots - 1
-                matches_per_round = participant_slots // 2
-
-                max_rounds_created = max(
-                    max_rounds_created,
-                    rounds_needed,
-                )
-
+                slots = len(rotation)
+                rounds_count = slots - 1
+                matches_per_round = slots // 2
                 group_matches_created = 0
 
                 for round_number in range(
                     1,
-                    rounds_needed + 1,
+                    rounds_count + 1,
                 ):
-                    round_match_index = 0
+                    court_index = 0
 
-                    for index in range(matches_per_round):
-                        pair_a = pairs_work[index]
-                        pair_b = pairs_work[
-                            participant_slots - 1 - index
+                    for match_index in range(
+                        matches_per_round
+                    ):
+                        pair_a_id = rotation[match_index]
+
+                        pair_b_id = rotation[
+                            slots - 1 - match_index
                         ]
 
-                        if pair_a is None or pair_b is None:
+                        # Cuando existe None, esa pareja descansa.
+                        if (
+                            pair_a_id is None
+                            or pair_b_id is None
+                        ):
                             continue
 
-                        round_match_index += 1
+                        court_index += 1
 
-                        assigned_court = None
-
-                        if round_match_index <= courts_count:
-                            assigned_court = (
-                                f"Cancha {round_match_index}"
-                            )
+                        court = (
+                            f"Cancha {court_index}"
+                            if court_index <= courts_count
+                            else None
+                        )
 
                         cur.execute(
                             """
@@ -2513,9 +2519,9 @@ def generate_league_fixture(league_id: int):
                                 (
                                     league_id,
                                     round_number,
+                                    phase,
                                     pair_a_id,
                                     pair_b_id,
-                                    phase,
                                     status,
                                     court
                                 )
@@ -2523,37 +2529,50 @@ def generate_league_fixture(league_id: int):
                                 (
                                     %s,
                                     %s,
-                                    %s,
-                                    %s,
                                     'regular',
+                                    %s,
+                                    %s,
                                     'scheduled',
                                     %s
-                                );
+                                )
+                            RETURNING id;
                             """,
                             (
                                 league_id,
                                 round_number,
-                                pair_a,
-                                pair_b,
-                                assigned_court,
+                                pair_a_id,
+                                pair_b_id,
+                                court,
                             ),
                         )
 
-                        total_matches_created += 1
+                        match_id = cur.fetchone()["id"]
+
+                        created_matches.append(
+                            {
+                                "match_id": match_id,
+                                "group_name": group_name,
+                                "round_number": round_number,
+                                "pair_a_id": pair_a_id,
+                                "pair_b_id": pair_b_id,
+                                "court": court,
+                            }
+                        )
+
                         group_matches_created += 1
 
-                    # Algoritmo circle method.
-                    pairs_work = (
-                        [pairs_work[0]]
-                        + [pairs_work[-1]]
-                        + pairs_work[1:-1]
+                    # Rotación manteniendo fija la primera pareja.
+                    rotation = (
+                        [rotation[0]]
+                        + [rotation[-1]]
+                        + rotation[1:-1]
                     )
 
-                groups_summary.append(
+                group_summaries.append(
                     {
-                        "group_name": f"Grupo {group_number}",
-                        "pairs": len(pairs),
-                        "rounds": rounds_needed,
+                        "group_name": group_name,
+                        "pairs": len(group_pair_ids),
+                        "rounds": rounds_count,
                         "matches": group_matches_created,
                     }
                 )
@@ -2562,28 +2581,27 @@ def generate_league_fixture(league_id: int):
                 """
                 UPDATE league_seasons
                 SET status = 'scheduled'
-                WHERE id = %s
-                RETURNING *;
+                WHERE id = %s;
                 """,
                 (league_id,),
             )
 
-            updated_league = cur.fetchone()
             conn.commit()
 
             return {
                 "message": "Fixture generado correctamente",
-                "league": updated_league,
-                "configuration": {
-                    "group_count": group_count,
-                    "courts_count": courts_count,
-                    "scoring_mode": league["scoring_mode"],
-                    "playoff_format": league["playoff_format"],
-                },
-                "groups": groups_summary,
-                "rounds_created": max_rounds_created,
-                "matches_created": total_matches_created,
+                "league_id": league_id,
+                "group_count": len(groups),
+                "groups": group_summaries,
+                "rounds_created": max(
+                    group["rounds"]
+                    for group in group_summaries
+                ),
+                "matches_created": len(created_matches),
+                "matches": created_matches,
             }
+
+
 
 
 @app.get("/leagues/{league_id}/matches")
