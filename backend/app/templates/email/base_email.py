@@ -25,11 +25,18 @@ def base_email_template(
     link_help = ""
     if button_url:
         link_help = f"""
-        <p style="font-size:13px; color:#6b7280; line-height:1.5; margin-top:24px;">
-          Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-          <span style="word-break:break-all;">{button_url}</span>
+        <p style="font-size:13px;color:#6b7280;">
+        Si el botón no funciona puedes abrir este enlace:
+        </p>
+
+        <p style="margin:8px 0 0 0;">
+        <a href="{button_url}"
+           style="color:#16a34a;word-break:break-all;">
+        {button_url}
+        </a>
         </p>
         """
+
 
     return f"""
     <div style="margin:0; padding:0; background:#f3f6f4; font-family:Arial, Helvetica, sans-serif;">

@@ -6481,98 +6481,275 @@ def credentials_email_template(
     login_url = f"{FRONTEND_URL}/player-login.html"
 
     html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;color:#111827;">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;padding:28px;">
-        <h1 style="margin:0 0 8px;font-size:30px;">Bienvenida/o a PuntoRank</h1>
-        <div style="width:55px;height:5px;background:#18a957;border-radius:20px;margin:14px 0 24px;"></div>
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+      >
+    </head>
 
-        <p>Hola <strong>{player_name}</strong>,</p>
+    <body
+      style="
+        margin:0;
+        padding:0;
+        background:#f3f6f4;
+        font-family:Arial, Helvetica, sans-serif;
+      "
+    >
+      <table
+        role="presentation"
+        width="100%"
+        cellspacing="0"
+        cellpadding="0"
+        border="0"
+        style="background:#f3f6f4;"
+      >
+        <tr>
+          <td align="center" style="padding:28px 16px;">
 
-        <p>
-          <strong>{club_name}</strong> creó tu acceso a PuntoRank.
-          Desde tu cuenta podrás revisar tus ligas, partidos, resultados y rating.
-        </p>
+            <table
+              role="presentation"
+              width="100%"
+              cellspacing="0"
+              cellpadding="0"
+              border="0"
+              style="
+                max-width:640px;
+                background:#ffffff;
+                border:1px solid #e5e7eb;
+                border-radius:22px;
+              "
+            >
+              <tr>
+                <td
+                  align="center"
+                  style="
+                    padding:30px 24px;
+                    background:#0f172a;
+                    color:#ffffff;
+                    border-radius:22px 22px 0 0;
+                  "
+                >
+                  <div
+                    style="
+                      font-size:38px;
+                      line-height:1;
+                    "
+                  >
+                    🎾
+                  </div>
 
-        <div style="background:#f4f8f5;border-radius:16px;padding:18px;margin:22px 0;">
-          <p style="margin:0 0 10px;"><strong>Usuario:</strong> {email}</p>
-          <p style="margin:0;"><strong>Contraseña temporal:</strong> {temporary_password}</p>
-        </div>
+                  <div
+                    style="
+                      margin-top:10px;
+                      font-size:28px;
+                      font-weight:900;
+                    "
+                  >
+                    PuntoRank
+                  </div>
 
-        <p>
-          <a href="{login_url}"
-             style="display:inline-block;background:#18a957;color:white;padding:13px 20px;border-radius:12px;text-decoration:none;font-weight:bold;">
-            Ingresar a PuntoRank
-          </a>
-        </p>
+                  <div
+                    style="
+                      margin-top:6px;
+                      font-size:14px;
+                      opacity:0.85;
+                    "
+                  >
+                    El ranking donde cada partido cuenta
+                  </div>
+                </td>
+              </tr>
 
-        <p style="color:#66736d;font-size:14px;margin-top:24px;">
-          Por seguridad, cambia tu contraseña después de ingresar.
-        </p>
-      </div>
-    </div>
+              <tr>
+                <td
+                  style="
+                    padding:30px 26px;
+                    color:#374151;
+                    font-size:15px;
+                    line-height:1.65;
+                  "
+                >
+                  <h2
+                    style="
+                      margin:0 0 18px;
+                      color:#111827;
+                      font-size:24px;
+                    "
+                  >
+                    Bienvenida/o a PuntoRank
+                  </h2>
+
+                  <p style="margin:0 0 16px;">
+                    Hola <strong>{player_name}</strong>,
+                  </p>
+
+                  <p style="margin:0 0 22px;">
+                    <strong>{club_name}</strong> creó tu acceso
+                    a PuntoRank. Desde tu cuenta podrás revisar
+                    tus ligas, partidos, resultados y rating.
+                  </p>
+
+                  <!-- Acción principal visible antes de las credenciales -->
+                  <table
+                    role="presentation"
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                    style="margin:0 auto 24px;"
+                  >
+                    <tr>
+                      <td
+                        align="center"
+                        bgcolor="#16a34a"
+                        style="border-radius:999px;"
+                      >
+                        <a
+                          href="{login_url}"
+                          target="_blank"
+                          style="
+                            display:inline-block;
+                            padding:15px 26px;
+                            color:#ffffff;
+                            text-decoration:none;
+                            font-weight:800;
+                            font-size:15px;
+                          "
+                        >
+                          Ingresar a PuntoRank
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <table
+                    role="presentation"
+                    width="100%"
+                    cellspacing="0"
+                    cellpadding="0"
+                    border="0"
+                    style="
+                      margin:0 0 22px;
+                      background:#f1f5f2;
+                      border-radius:16px;
+                    "
+                  >
+                    <tr>
+                      <td style="padding:20px;">
+                        <p style="margin:0 0 12px;">
+                          <strong>Usuario:</strong>
+                          <a
+                            href="mailto:{email}"
+                            style="color:#2563eb;"
+                          >
+                            {email}
+                          </a>
+                        </p>
+
+                        <p style="margin:0;">
+                          <strong>Contraseña temporal:</strong>
+                          {temporary_password}
+                        </p>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <p style="margin:0 0 14px;">
+                    Por seguridad, deberás cambiar esta contraseña
+                    cuando ingreses por primera vez.
+                  </p>
+
+                  <p
+                    style="
+                      margin:0;
+                      color:#6b7280;
+                      font-size:13px;
+                      line-height:1.5;
+                    "
+                  >
+                    Si el botón no funciona, abre este enlace:
+                  </p>
+
+                  <p
+                    style="
+                      margin:6px 0 0;
+                      font-size:13px;
+                      line-height:1.5;
+                    "
+                  >
+                    <a
+                      href="{login_url}"
+                      target="_blank"
+                      style="
+                        color:#16a34a;
+                        word-break:break-all;
+                      "
+                    >
+                      {login_url}
+                    </a>
+                  </p>
+
+                  <div
+                    style="
+                      margin-top:30px;
+                      padding-top:18px;
+                      border-top:1px solid #e5e7eb;
+                    "
+                  >
+                    <p
+                      style="
+                        margin:0;
+                        color:#374151;
+                        font-size:14px;
+                      "
+                    >
+                      Nos vemos en la cancha 🎾<br>
+                      <strong>Equipo PuntoRank</strong>
+                    </p>
+                  </div>
+                </td>
+              </tr>
+            </table>
+
+            <div
+              style="
+                margin-top:16px;
+                color:#6b7280;
+                font-size:12px;
+                text-align:center;
+              "
+            >
+              © PuntoRank ·
+              <a
+                href="{FRONTEND_URL}"
+                style="color:#16a34a;"
+              >
+                {FRONTEND_URL}
+              </a>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
     """
 
     text = (
-        f"Hola {player_name}. {club_name} creó tu acceso a PuntoRank.\n"
+        "Bienvenida/o a PuntoRank\n\n"
+        f"Hola {player_name},\n\n"
+        f"{club_name} creó tu acceso a PuntoRank.\n\n"
+        f"Ingresar a PuntoRank:\n{login_url}\n\n"
         f"Usuario: {email}\n"
-        f"Contraseña temporal: {temporary_password}\n"
-        f"Ingreso: {login_url}\n"
-        "Cambia tu contraseña después de ingresar."
+        f"Contraseña temporal: {temporary_password}\n\n"
+        "Por seguridad, deberás cambiar esta contraseña "
+        "cuando ingreses por primera vez.\n"
     )
 
     return html, text
 
-
-def league_welcome_email_template(
-    player_name: str,
-    league_name: str,
-    club_name: str,
-    league_id: int,
-):
-    league_url = f"{FRONTEND_URL}/league-public.html?id={league_id}"
-    dashboard_url = f"{FRONTEND_URL}/player-dashboard.html"
-
-    html = f"""
-    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:28px;color:#111827;">
-      <div style="background:#ffffff;border:1px solid #e5e7eb;border-radius:20px;padding:28px;">
-        <h1 style="margin:0 0 8px;font-size:30px;">¡Bienvenida/o a la liga!</h1>
-        <div style="width:55px;height:5px;background:#18a957;border-radius:20px;margin:14px 0 24px;"></div>
-
-        <p>Hola <strong>{player_name}</strong>,</p>
-
-        <p>
-          Ya estás inscrita/o en <strong>{league_name}</strong>,
-          organizada por <strong>{club_name}</strong>.
-        </p>
-
-        <p>
-          En la página pública de la liga podrás revisar participantes,
-          tabla de posiciones, fixture, resultados y estadísticas.
-        </p>
-
-        <p>
-          <a href="{league_url}"
-             style="display:inline-block;background:#18a957;color:white;padding:13px 20px;border-radius:12px;text-decoration:none;font-weight:bold;margin-right:8px;">
-            Ver la liga
-          </a>
-        </p>
-
-        <p style="margin-top:20px;">
-          También puedes revisar tus próximos partidos desde
-          <a href="{dashboard_url}">Mi PuntoRank</a>.
-        </p>
-      </div>
-    </div>
-    """
-
-    text = (
-        f"Hola {player_name}. Ya estás inscrita/o en {league_name}, "
-        f"organizada por {club_name}.\n"
-        f"Ver liga: {league_url}\n"
-        f"Mi PuntoRank: {dashboard_url}"
-    )
-
-    return html, text
 
 def league_match_result_email_template(
     player_name: str,
