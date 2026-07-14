@@ -6924,7 +6924,7 @@ def test_email_template(
             player_name=data.player_name,
             league_name=data.league_name,
             club_name=data.club_name,
-            league_id=3,
+            league_id=data.league_id,
         )
         subject = f"Bienvenida/o a {data.league_name}"
 
