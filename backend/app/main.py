@@ -53,6 +53,10 @@ from app.services.r2_service import (
     upload_player_photo,
 )
 from typing import Literal
+from app.templates.email.league_registration import (
+    league_registration_template,
+    league_welcome_email_template,
+)
 
 load_dotenv()
 
