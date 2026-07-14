@@ -52,6 +52,24 @@
         <option value="">Selecciona</option>
         <option value="femenino">Femenino</option>
         <option value="masculino">Masculino</option>
+        <option value="mixto">Mixto</option>
+      </select>
+
+      <label for="pairsTarget">Formato</label>
+
+      <select id="pairsTarget" onchange="updateMinimumCourts()" >
+        <option value="4">
+          Cuadrangular · 4 parejas
+        </option>
+
+        <option value="6">
+          Hexagonal · 6 parejas
+        </option>
+
+        <option value="8">
+          Octagonal · 8 parejas · 28 partidos
+        </option>
+
       </select>
 
       <label>Cantidad de canchas</label>
@@ -70,52 +88,12 @@
     <div class="message" id="createMessage"></div>
   </div>
 
-  <div class="card hidden" id="playersCard">
-    <h2>Agregar jugadores</h2>
-
-    <form id="playerForm">
-      <label>Jugador existente</label>
-      <select id="existingPlayer">
-        <option value="">Cargando jugadores...</option>
-      </select>
-
-      <button type="button" onclick="addExistingPlayer()">Agregar jugador existente</button>
-
-      <hr style="border-color:#333;margin:22px 0;">
-
-      <h3>Crear jugador rápido</h3>
-
-      <label>Nombre</label>
-      <input type="text" id="newName" placeholder="Nombre jugador">
-
-      <label>Email opcional</label>
-      <input type="email" id="newEmail" placeholder="email@dominio.com">
-
-      <label>Lado</label>
-      <select id="newSide">
-        <option value="">Selecciona</option>
-        <option value="drive">Drive</option>
-        <option value="reves">Revés</option>
-        <option value="ambos">Ambos</option>
-      </select>
-
-      <button type="button" onclick="addNewPlayer()">Crear y agregar</button>
-    </form>
-
-    <div class="message" id="playerMessage"></div>
-
-    <h3>Jugadores inscritos</h3>
-    <div id="playersList"></div>
-
-    <button class="secondary" onclick="goDashboard()">Volver al panel</button>
-  </div>
 
 <script>
   const API_URL = "https://puntorank-backend.onrender.com";
 
   const clubId = localStorage.getItem("club_id");
   const clubName = localStorage.getItem("club_name");
-  let americanoId = null;
 
   if (!clubId) {
     window.location.href = "club-login.html";
@@ -123,117 +101,157 @@
 
   document.getElementById("clubInfo").innerText = `Club: ${clubName}`;
 
-  document.getElementById("americanoForm").addEventListener("submit", async function(event) {
-    event.preventDefault();
+document
+  .getElementById("americanoForm")
+  .addEventListener(
+    "submit",
+    async function (event) {
+      event.preventDefault();
 
-    const payload = {
-      club_id: parseInt(clubId),
-      name: document.getElementById("name").value.trim(),
-      category: document.getElementById("category").value,
-      gender: document.getElementById("gender").value,
-      courts: parseInt(document.getElementById("courts").value),
-      duration_minutes: parseInt(document.getElementById("duration").value)
-    };
+      const message =
+        document.getElementById("createMessage");
 
-    try {
-      const response = await fetch(`${API_URL}/americanos`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(payload)
-      });
+      const submitButton =
+        event.submitter;
 
-      if (!response.ok) throw new Error("No se pudo crear americano");
+      const payload = {
+        club_id: Number(clubId),
 
-      const americano = await response.json();
+        name: document
+          .getElementById("name")
+          .value
+          .trim(),
 
-      window.location.href = `americano-view.html?id=${americano.id}`;
+        category:
+          document.getElementById("category").value,
 
+        gender:
+          document.getElementById("gender").value,
 
-    } catch (error) {
-      console.error(error);
-      document.getElementById("createMessage").innerText = "Error creando americano.";
+        pairs_target: Number(
+          document.getElementById(
+            "pairsTarget"
+          ).value
+        ),
+
+        courts: Number(
+          document.getElementById("courts").value
+        ),
+
+        duration_minutes: Number(
+          document.getElementById("duration").value
+        )
+      };
+
+      if (!payload.name) {
+        message.textContent =
+          "❌ Debes ingresar un nombre.";
+        return;
+      }
+
+      message.textContent =
+        "Creando evento...";
+
+      if (submitButton) {
+        submitButton.disabled = true;
+      }
+
+      try {
+        const response = await fetch(
+          `${API_URL}/americanos`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          message.textContent =
+            `❌ ${
+              result.detail ||
+              "No se pudo crear el evento"
+            }`;
+
+          return;
+        }
+
+        window.location.href =
+          `americano-view.html?id=${result.id}`;
+
+      } catch (error) {
+        console.error(error);
+
+        message.textContent =
+          "❌ No fue posible conectar con PuntoRank.";
+
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+        }
+      }
     }
-  });
+  );
 
-  async function loadPlayers() {
-    const response = await fetch(`${API_URL}/players`);
-    const players = await response.json();
+function updateEventSummary() {
+  const pairsTarget = Number(
+    document.getElementById("pairsTarget").value
+  );
 
-    const select = document.getElementById("existingPlayer");
-    select.innerHTML = `<option value="">Selecciona jugador</option>`;
+  const courtsInput =
+    document.getElementById("courts");
 
-    players.forEach(player => {
-      const option = document.createElement("option");
-      option.value = player.id;
-      option.textContent = player.name;
-      select.appendChild(option);
-    });
+  const courts = Math.max(
+    1,
+    Number(courtsInput.value) || 1
+  );
+
+  courtsInput.min = "1";
+
+  const matchesPerRound =
+    pairsTarget / 2;
+
+  const rounds =
+    pairsTarget - 1;
+
+  const totalMatches =
+    pairsTarget * (pairsTarget - 1) / 2;
+
+  const secondShiftMatches = Math.max(
+    0,
+    matchesPerRound - courts
+  );
+
+  const help =
+    document.getElementById("courtsHelp");
+
+  let text =
+    `${rounds} rondas · ` +
+    `${matchesPerRound} partidos por ronda · ` +
+    `${totalMatches} partidos en total.`;
+
+  if (secondShiftMatches > 0) {
+    text +=
+      ` Con ${courts} cancha${courts === 1 ? "" : "s"}, ` +
+      `${secondShiftMatches} partido` +
+      `${secondShiftMatches === 1 ? "" : "s"} ` +
+      `por ronda deberá${secondShiftMatches === 1 ? "" : "n"} ` +
+      `jugarse en un segundo turno.`;
+  } else {
+    text +=
+      " Todos los partidos de una ronda pueden " +
+      "jugarse simultáneamente.";
   }
 
-  async function addExistingPlayer() {
-    const playerId = document.getElementById("existingPlayer").value;
+  help.textContent = text;
+}
 
-    if (!playerId || !americanoId) return;
+updateEventSummary();
 
-    await fetch(`${API_URL}/americanos/${americanoId}/players`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ player_id: parseInt(playerId) })
-    });
-
-    document.getElementById("playerMessage").innerText = "Jugador agregado ✅";
-    await loadAmericanoPlayers();
-  }
-
-  async function addNewPlayer() {
-    const name = document.getElementById("newName").value.trim();
-    if (!name || !americanoId) return;
-
-    const payload = {
-      name,
-      email: document.getElementById("newEmail").value.trim() || null,
-      gender: document.getElementById("gender").value,
-      category: document.getElementById("category").value,
-      side: document.getElementById("newSide").value || null
-    };
-
-    await fetch(`${API_URL}/americanos/${americanoId}/players`, {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload)
-    });
-
-    document.getElementById("newName").value = "";
-    document.getElementById("newEmail").value = "";
-    document.getElementById("newSide").value = "";
-
-    document.getElementById("playerMessage").innerText = "Jugador creado y agregado ✅";
-
-    await loadPlayers();
-    await loadAmericanoPlayers();
-  }
-
-  async function loadAmericanoPlayers() {
-    const response = await fetch(`${API_URL}/americanos/${americanoId}/players`);
-    const players = await response.json();
-
-    const list = document.getElementById("playersList");
-
-    if (players.length === 0) {
-      list.innerHTML = "Aún no hay jugadores inscritos.";
-      return;
-    }
-
-    list.innerHTML = players.map(p => `
-      <div class="player-row">
-        ${p.name} · ${p.category || ""} · ${p.side || "sin lado"} · ${p.paid ? "Pagado" : "No pagado"}
-      </div>
-    `).join("");
-  }
-
-  function goDashboard() {
-    window.location.href = "club-dashboard.html";
-  }
 </script>
 
 </body>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PuntoRank - Americano</title>
+  <title>PuntoRank - Crear evento</title>
   <link rel="stylesheet" href="theme.css">
 
   <!-- Google tag (gtag.js) -->
@@ -25,12 +25,41 @@
   <button class="nav-icon" onclick="history.back()">← Volver</button>
 </div>
 
-  <div class="brand" id="americanoName">Cargando americano...</div>
+  <div class="brand" id="americanoName">Cargando evento...</div>
 
   <div class="card">
     <h2>Detalle</h2>
     <div class="meta" id="americanoDetail"></div>
   </div>
+
+<div class="card">
+  <h2>Inscribir jugadores</h2>
+
+  <div class="meta">
+    Busca jugadores existentes en PuntoRank y agrégalos
+    al evento antes de crear las parejas.
+  </div>
+
+  <label for="eligiblePlayerSelect">
+    Jugador/a existente
+  </label>
+
+  <select id="eligiblePlayerSelect">
+    <option value="">
+      Cargando jugadores...
+    </option>
+  </select>
+
+  <button id="enrollButton" onclick="enrollExistingPlayer()">
+    Agregar al evento
+  </button>
+
+  <div
+    id="enrollmentMessage"
+    class="meta"
+    style="margin-top:12px;"
+  ></div>
+</div>
 
 <div class="card">
   <h2>Jugadores inscritos</h2>
@@ -40,16 +69,16 @@
 <div class="card">
   <h2>Crear pareja</h2>
 
-  <label>Jugadora 1</label>
+  <label>Jugador/a 1</label>
   <select id="pairPlayer1"></select>
 
-  <label>Jugadora 2</label>
+  <label>Jugador/a 2</label>
   <select id="pairPlayer2"></select>
 
   <label>Nombre pareja</label>
   <input type="text" id="pairName" placeholder="Ej: Celsa / Miraida">
 
-  <button onclick="createPair()">Crear pareja</button>
+  <button id="createPairButton" onclick="createPair()">Crear pareja</button>
 
   <h3>Parejas creadas</h3>
   <div id="pairsList">Cargando parejas...</div>
@@ -58,7 +87,7 @@
 <div class="card">
   <h2>Partidos generados</h2>
 
-  <button onclick="generateRounds()">
+  <button id="generateRoundsButton" onclick="generateRounds()">
     Generar rondas
   </button>
 
@@ -73,7 +102,7 @@
 <div class="card">
   <h2>Tabla de posiciones</h2>
   <button id="finishButton" onclick="finishAmericano()">
-    Finalizar Americano
+    Finalizar Evento
   </button>
 
 <div id="finishMessage" class="meta" style="margin-top:12px;"></div>
@@ -88,30 +117,88 @@
   const americanoId = params.get("id");
 
   let americanoPlayers = [];
+  let currentAmericano = null;
+  let currentPairs = [];
 
   if (!americanoId) {
     window.location.href = "americanos.html";
   }
 
-  async function loadAmericano() {
-    const response = await fetch(`${API_URL}/americanos/${americanoId}`);
 
-    if (!response.ok) {
-      document.getElementById("americanoName").innerText = "Americano no encontrado";
-      return;
-    }
+  async function loadAmericano() {
+    const response = await fetch(
+      `${API_URL}/americanos/${americanoId}`
+    );
 
     const americano = await response.json();
 
-    document.getElementById("americanoName").innerText = americano.name;
+    if (!response.ok) {
+      document.getElementById(
+        "americanoName"
+      ).innerText = "Evento no encontrado";
 
-    document.getElementById("americanoDetail").innerHTML = `
+      return;
+    }
+
+    currentAmericano = americano;
+
+    const formatNames = {
+      4: "Cuadrangular",
+      6: "Hexagonal"
+      8: "Octagonal" 
+    };
+
+    const formatName =
+      formatNames[Number(americano.pairs_target)]
+      || `${americano.pairs_target} parejas`;
+
+    document.getElementById(
+      "americanoName"
+    ).innerText = americano.name;
+
+    document.getElementById(
+      "americanoDetail"
+    ).innerHTML = `
+      Formato: ${formatName}<br>
       Categoría: ${americano.category}<br>
       Género: ${americano.gender}<br>
+      Parejas requeridas: ${americano.pairs_target}<br>
       Canchas: ${americano.courts}<br>
       Duración bloque: ${americano.duration_minutes} min<br>
       Estado: ${americano.status}
     `;
+
+    const configurationLocked =
+      americano.status !== "draft";
+
+    document.getElementById(
+      "eligiblePlayerSelect"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "pairPlayer1"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "pairPlayer2"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "pairName"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "enrollButton"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "createPairButton"
+    ).disabled = configurationLocked;
+
+    document.getElementById(
+      "generateRoundsButton"
+    ).disabled = configurationLocked;
+
   }
 
   async function loadPlayers() {
@@ -143,6 +230,120 @@
   }
 
 
+async function loadEligiblePlayers() {
+  const select = document.getElementById(
+    "eligiblePlayerSelect"
+  );
+
+  try {
+    const response = await fetch(
+      `${API_URL}/americanos/${americanoId}` +
+      `/eligible-players`
+    );
+
+    const players = await response.json();
+
+    if (!response.ok) {
+      select.innerHTML = `
+        <option value="">
+          No se pudieron cargar
+        </option>
+      `;
+      return;
+    }
+
+    if (!players.length) {
+      select.innerHTML = `
+        <option value="">
+          No quedan jugadores disponibles
+        </option>
+      `;
+      return;
+    }
+
+    select.innerHTML = `
+      <option value="">
+        Selecciona un jugador/a
+      </option>
+
+      ${players.map(player => `
+        <option value="${player.player_id}">
+          ${player.name}
+          · ${player.category || "sin categoría"}
+          · ${player.gender || "sin género"}
+          · ${player.club_name || "sin club"}
+        </option>
+      `).join("")}
+    `;
+
+  } catch (error) {
+    console.error(error);
+
+    select.innerHTML = `
+      <option value="">
+        Error de conexión
+      </option>
+    `;
+  }
+}
+
+
+async function enrollExistingPlayer() {
+  const select = document.getElementById(
+    "eligiblePlayerSelect"
+  );
+
+  const playerId = Number(select.value);
+
+  const message = document.getElementById(
+    "enrollmentMessage"
+  );
+
+  if (!playerId) {
+    alert("Selecciona un jugador/a.");
+    return;
+  }
+
+  message.textContent =
+    "Agregando jugador al evento...";
+
+  try {
+    const response = await fetch(
+      `${API_URL}/americanos/${americanoId}/players`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          player_id: playerId
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      message.textContent =
+        `❌ ${result.detail || "No se pudo agregar"}`;
+
+      return;
+    }
+
+    message.textContent =
+      "✅ Jugador agregado al evento.";
+
+    await loadPlayers();
+    await loadEligiblePlayers();
+
+  } catch (error) {
+    console.error(error);
+
+    message.textContent =
+      "❌ No fue posible conectar con PuntoRank.";
+  }
+}
+
 async function loadStandings() {
   const response = await fetch(`${API_URL}/americanos/${americanoId}/standings`);
   const standings = await response.json();
@@ -168,27 +369,64 @@ async function loadStandings() {
 
 
 function fillPairSelectors(players) {
-  const select1 = document.getElementById("pairPlayer1");
-  const select2 = document.getElementById("pairPlayer2");
+  const select1 =
+    document.getElementById("pairPlayer1");
 
-  if (!select1 || !select2) return;
+  const select2 =
+    document.getElementById("pairPlayer2");
 
-  select1.innerHTML = `<option value="">Selecciona jugadora</option>`;
-  select2.innerHTML = `<option value="">Selecciona jugadora</option>`;
+  if (!select1 || !select2) {
+    return;
+  }
 
-  players.forEach(p => {
-    const option1 = document.createElement("option");
-    option1.value = p.player_id;
-    option1.textContent = p.name;
+  const usedPlayerIds = new Set();
 
-    const option2 = document.createElement("option");
-    option2.value = p.player_id;
-    option2.textContent = p.name;
+  currentPairs.forEach(pair => {
+    usedPlayerIds.add(Number(pair.player_1_id));
+    usedPlayerIds.add(Number(pair.player_2_id));
+  });
+
+  const availablePlayers = players.filter(
+    player => !usedPlayerIds.has(
+      Number(player.player_id)
+    )
+  );
+
+  select1.innerHTML = `
+    <option value="">
+      Selecciona jugador/a
+    </option>
+  `;
+
+  select2.innerHTML = `
+    <option value="">
+      Selecciona jugador/a
+    </option>
+  `;
+
+  availablePlayers.forEach(player => {
+    const option1 =
+      document.createElement("option");
+
+    option1.value = player.player_id;
+    option1.textContent = player.name;
+
+    const option2 =
+      document.createElement("option");
+
+    option2.value = player.player_id;
+    option2.textContent = player.name;
 
     select1.appendChild(option1);
     select2.appendChild(option2);
   });
 }
+
+document.getElementById("pairPlayer1").value = "";
+document.getElementById("pairPlayer2").value = "";
+document.getElementById("pairName").value = "";
+
+await loadPairs();
 
 async function createPair() {
   const player1 = document.getElementById("pairPlayer1").value;
@@ -196,12 +434,12 @@ async function createPair() {
   const pairName = document.getElementById("pairName").value.trim();
 
   if (!player1 || !player2) {
-    alert("Debes seleccionar dos jugadoras.");
+    alert("Debes seleccionar dos jugadores/as.");
     return;
   }
 
   if (player1 === player2) {
-    alert("La pareja debe tener dos jugadoras distintas.");
+    alert("La pareja debe tener dos jugadores/as distintos.");
     return;
   }
 
@@ -227,24 +465,44 @@ async function createPair() {
 }
 
 async function loadPairs() {
-  const response = await fetch(`${API_URL}/americanos/${americanoId}/pairs`);
+  const response = await fetch(
+    `${API_URL}/americanos/${americanoId}/pairs`
+  );
+
   const pairs = await response.json();
+
+  if (!response.ok) {
+    document.getElementById("pairsList").innerHTML =
+      "No se pudieron cargar las parejas.";
+    return;
+  }
+
+  currentPairs = pairs;
 
   const list = document.getElementById("pairsList");
 
   if (pairs.length === 0) {
     list.innerHTML = "Aún no hay parejas creadas.";
-    return;
+  } else {
+    list.innerHTML = pairs.map(pair => `
+      <div class="player-row">
+        <div>
+          <strong>
+            ${
+              pair.pair_name ||
+              `${pair.player_1_name} / ${pair.player_2_name}`
+            }
+          </strong><br>
+
+          <span class="meta">
+            ${pair.player_1_name} / ${pair.player_2_name}
+          </span>
+        </div>
+      </div>
+    `).join("");
   }
 
-  list.innerHTML = pairs.map(pair => `
-    <div class="player-row">
-      <div>
-        <strong>${pair.pair_name || `${pair.player_1_name} / ${pair.player_2_name}`}</strong><br>
-        <span class="meta">${pair.player_1_name} / ${pair.player_2_name}</span>
-      </div>
-    </div>
-  `).join("");
+  fillPairSelectors(americanoPlayers);
 }
 
 async function togglePaid(americanoPlayerId) {
@@ -271,8 +529,11 @@ async function generateRounds() {
   document.getElementById("generationSummary").innerHTML = `
     Formato: ${result.format}<br>
     Parejas: ${result.pairs}<br>
+    Canchas disponibles: ${result.courts}<br>
     Partidos: ${result.matches_created}<br>
     Rondas: ${result.rounds_created}<br>
+    Partidos para segundo turno:
+      ${result.matches_without_court}<br>
     Tiempo recomendado por partido: ${result.recommended_minutes_per_match} min
   `;
 
@@ -294,7 +555,16 @@ async function loadMatches() {
 list.innerHTML = matches.map(m => `
   <div class="player-row">
     <div style="width:100%;">
-      <strong>Ronda ${m.round_number} · Cancha ${m.court_number}</strong><br>
+      <strong>
+        Ronda ${m.round_number}
+        ·
+        ${
+          m.court_number
+            ? `Cancha ${m.court_number}`
+            : "Segundo turno · cancha por asignar"
+        }
+      </strong>
+      <br>
 
       <span class="meta">${m.pair_a_name}</span>
       <br>vs<br>
@@ -341,6 +611,20 @@ async function saveMatchResult(matchId) {
     return;
   }
 
+
+  if (pairAGames < 0 || pairBGames < 0) {
+    alert("Los games no pueden ser negativos.");
+    return;
+  }
+
+  if (pairAGames === pairBGames) {
+    alert(
+      "El resultado no puede terminar empatado. " +
+      "Debes ingresar un ganador."
+    );
+    return;
+  }
+
   const response = await fetch(`${API_URL}/americano-matches/${matchId}/result`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
@@ -362,7 +646,7 @@ async function saveMatchResult(matchId) {
 async function finishAmericano() {
 
   const confirmFinish = confirm(
-    "¿Seguro que deseas finalizar el americano? Esto procesará el ranking."
+    "¿Seguro que deseas finalizar el evento? Esto procesará el ranking."
   );
 
   if (!confirmFinish) {
@@ -384,7 +668,7 @@ async function finishAmericano() {
   }
 
   document.getElementById("finishMessage").innerHTML = `
-    ✅ Americano finalizado correctamente.
+    ✅ Evento finalizado correctamente.
   `;
 
 const button = document.getElementById("finishButton");
@@ -396,12 +680,16 @@ button.style.cursor = "not-allowed";
   await loadStandings();
 }
 
+async function initializePage() {
+  await loadAmericano();
+  await loadPairs();
+  await loadPlayers();
+  await loadEligiblePlayers();
+  await loadMatches();
+  await loadStandings();
+}
 
-loadAmericano();
-loadPlayers();
-loadPairs();
-loadMatches();
-loadStandings();
+initializePage();
 
 </script>
 

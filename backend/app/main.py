@@ -763,14 +763,66 @@ def get_club_history(club_id: int):
 
 @app.post("/americanos")
 def create_americano(data: AmericanoCreate):
+    allowed_genders = {
+        "femenino",
+        "masculino",
+        "mixto",
+    }
+
+    allowed_pair_targets = {
+        4,
+        6,
+        8,
+    }
+
+    if data.gender not in allowed_genders:
+        raise HTTPException(
+            status_code=400,
+            detail="Género no válido",
+        )
+
+    if data.pairs_target not in allowed_pair_targets:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Por ahora puedes crear eventos "
+                "de 4 o 6 parejas"
+            ),
+        )
+
+    if data.courts < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Debe existir al menos una cancha",
+        )
+
+
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO americano_events
-                    (club_id, name, category, gender, courts, duration_minutes, status)
+                    (
+                        club_id,
+                        name,
+                        category,
+                        gender,
+                        courts,
+                        duration_minutes,
+                        pairs_target,
+                        status
+                    )
                 VALUES
-                    (%s, %s, %s, %s, %s, %s, 'draft')
+                    (
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        'draft'
+                    )
                 RETURNING *;
                 """,
                 (
@@ -780,52 +832,206 @@ def create_americano(data: AmericanoCreate):
                     data.gender,
                     data.courts,
                     data.duration_minutes,
+                    data.pairs_target,
                 ),
             )
 
             americano = cur.fetchone()
             conn.commit()
+
             return americano
 
-@app.post("/americanos/{americano_id}/players")
-def add_player_to_americano(americano_id: int, data: AmericanoAddPlayer):
+@app.get("/americanos/{americano_id}/eligible-players")
+def get_americano_eligible_players(
+    americano_id: int,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
-            player_id = data.player_id
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    club_id,
+                    gender,
+                    category
+                FROM americano_events
+                WHERE id = %s;
+                """,
+                (americano_id,),
+            )
 
-            if player_id is None:
-                if not data.name:
-                    raise HTTPException(status_code=400, detail="Debes enviar player_id o name")
+            americano = cur.fetchone()
 
-
-                cur.execute(
-                    """
-                    SELECT club_id
-                    FROM americano_events
-                    WHERE id = %s;
-                    """,
-                    (americano_id,),
+            if not americano:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Americano no encontrado",
                 )
 
-                americano = cur.fetchone()
+            cur.execute(
+                """
+                SELECT DISTINCT
+                    p.id AS player_id,
+                    p.name,
+                    p.email,
+                    p.gender,
+                    p.category,
+                    p.side,
 
-                if not americano:
-                    raise HTTPException(status_code=404, detail="Americano no encontrado")
+                    COALESCE(
+                        home_club.name,
+                        direct_club.name
+                    ) AS club_name,
 
-                club_id = americano["club_id"]
+                    CASE
+                        WHEN p.club_id = %s
+                        THEN TRUE
+
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM player_clubs pc2
+                            WHERE pc2.player_id = p.id
+                              AND pc2.club_id = %s
+                        )
+                        THEN TRUE
+
+                        ELSE FALSE
+                    END AS belongs_to_event_club
+
+                FROM players p
+
+                LEFT JOIN player_clubs pc
+                    ON pc.player_id = p.id
+                   AND pc.is_home_club = TRUE
+
+                LEFT JOIN clubs home_club
+                    ON home_club.id = pc.club_id
+
+                LEFT JOIN clubs direct_club
+                    ON direct_club.id = p.club_id
+
+                WHERE p.id NOT IN (
+                    SELECT ap.player_id
+                    FROM americano_players ap
+                    WHERE ap.americano_id = %s
+                )
+
+                ORDER BY
+                    belongs_to_event_club DESC,
+                    p.name;
+                """,
+                (
+                    americano["club_id"],
+                    americano["club_id"],
+                    americano_id,
+                ),
+            )
+
+            return cur.fetchall()
+
+
+@app.post("/americanos/{americano_id}/players")
+def add_player_to_americano(
+    americano_id: int,
+    data: AmericanoAddPlayer,
+):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    club_id,
+                    gender,
+                    category,
+                    pairs_target,
+                    status
+                FROM americano_events
+                WHERE id = %s
+                FOR UPDATE;
+                """,
+                (americano_id,),
+            )
+
+            americano = cur.fetchone()
+
+            if not americano:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Americano no encontrado",
+                )
+
+            if americano["status"] != "draft":
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No puedes inscribir jugadores "
+                        "después de generar las rondas"
+                    ),
+                )
+
+            player_id = data.player_id
+
+            if player_id is not None:
+                cur.execute(
+                    """
+                    SELECT
+                        id,
+                        name,
+                        gender,
+                        category
+                    FROM players
+                    WHERE id = %s;
+                    """,
+                    (player_id,),
+                )
+
+                player = cur.fetchone()
+
+                if not player:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Jugador no encontrado",
+                    )
+
+            else:
+                if not data.name:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            "Debes enviar player_id "
+                            "o el nombre del nuevo jugador"
+                        ),
+                    )
 
                 cur.execute(
                     """
                     INSERT INTO players
-                        (name, email, club_id, gender, category, side, is_registered)
+                        (
+                            name,
+                            email,
+                            club_id,
+                            gender,
+                            category,
+                            side,
+                            is_registered
+                        )
                     VALUES
-                        (%s, %s, %s, %s, %s, %s, FALSE)
+                        (
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            %s,
+                            FALSE
+                        )
                     RETURNING id;
                     """,
                     (
                         data.name,
                         data.email,
-                        club_id,
+                        americano["club_id"],
                         data.gender,
                         data.category,
                         data.side,
@@ -834,29 +1040,112 @@ def add_player_to_americano(americano_id: int, data: AmericanoAddPlayer):
 
                 player = cur.fetchone()
                 player_id = player["id"]
-                ensure_player_rating(cur, player_id)
+
+                ensure_player_rating(
+                    cur,
+                    player_id,
+                )
 
                 cur.execute(
                     """
-                    INSERT INTO player_clubs (player_id, club_id, is_home_club)
-                    VALUES (%s, %s, FALSE)
-                    ON CONFLICT (player_id, club_id) DO NOTHING;
+                    INSERT INTO player_clubs
+                        (
+                            player_id,
+                            club_id,
+                            is_home_club
+                        )
+                    VALUES
+                        (%s, %s, FALSE)
+                    ON CONFLICT (
+                        player_id,
+                        club_id
+                    )
+                    DO NOTHING;
                     """,
-                    (player_id, club_id),
+                    (
+                        player_id,
+                        americano["club_id"],
+                    ),
                 )
 
             cur.execute(
                 """
-                INSERT INTO americano_players (americano_id, player_id)
-                VALUES (%s, %s)
+                SELECT id
+                FROM americano_players
+                WHERE americano_id = %s
+                  AND player_id = %s;
+                """,
+                (
+                    americano_id,
+                    player_id,
+                ),
+            )
+
+            if cur.fetchone():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Este jugador ya está inscrito "
+                        "en el evento"
+                    ),
+                )
+
+            maximum_players = (
+                int(americano["pairs_target"]) * 2
+            )
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS players_count
+                FROM americano_players
+                WHERE americano_id = %s;
+                """,
+                (americano_id,),
+            )
+
+            players_count = cur.fetchone()[
+                "players_count"
+            ]
+
+            if players_count >= maximum_players:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"El evento admite como máximo "
+                        f"{maximum_players} jugadores"
+                    ),
+                )
+
+            cur.execute(
+                """
+                INSERT INTO americano_players
+                    (
+                        americano_id,
+                        player_id
+                    )
+                VALUES
+                    (%s, %s)
                 RETURNING *;
                 """,
-                (americano_id, player_id),
+                (
+                    americano_id,
+                    player_id,
+                ),
             )
 
             americano_player = cur.fetchone()
             conn.commit()
-            return americano_player
+
+            return {
+                "message": "Jugador inscrito",
+                "americano_player": americano_player,
+            }
+
+
+
+
+
+
 
 @app.get("/americanos/{americano_id}/players")
 def get_americano_players(americano_id: int):
@@ -956,16 +1245,22 @@ def toggle_americano_player_paid(americano_player_id: int):
 
 
 @app.post("/americanos/{americano_id}/generate-rounds")
-def generate_americano_rounds(americano_id: int):
-
+def generate_americano_rounds(
+    americano_id: int,
+):
     with get_conn() as conn:
         with conn.cursor() as cur:
-
             cur.execute(
                 """
-                SELECT id, courts, duration_minutes
+                SELECT
+                    id,
+                    courts,
+                    duration_minutes,
+                    pairs_target,
+                    status
                 FROM americano_events
-                WHERE id = %s;
+                WHERE id = %s
+                FOR UPDATE;
                 """,
                 (americano_id,),
             )
@@ -975,7 +1270,26 @@ def generate_americano_rounds(americano_id: int):
             if not americano:
                 raise HTTPException(
                     status_code=404,
-                    detail="Americano no encontrado",
+                    detail="Evento no encontrado",
+                )
+
+            cur.execute(
+                """
+                SELECT COUNT(*) AS existing
+                FROM americano_matches am
+                JOIN americano_rounds ar
+                    ON ar.id = am.round_id
+                WHERE ar.americano_id = %s;
+                """,
+                (americano_id,),
+            )
+
+            existing = cur.fetchone()["existing"]
+
+            if existing > 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Las rondas ya fueron generadas",
                 )
 
             cur.execute(
@@ -988,109 +1302,157 @@ def generate_americano_rounds(americano_id: int):
                 (americano_id,),
             )
 
-            pairs = [r["id"] for r in cur.fetchall()]
+            pairs = [
+                row["id"]
+                for row in cur.fetchall()
+            ]
 
-            if len(pairs) < 4:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Se necesitan al menos 4 parejas",
-                )
-
-            if len(pairs) > 6:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Por ahora este generador soporta hasta 6 parejas",
-                )
-
-            # limpiar rondas anteriores
-            cur.execute(
-                """
-                DELETE FROM americano_rounds
-                WHERE americano_id = %s;
-                """,
-                (americano_id,),
+            pairs_target = int(
+                americano["pairs_target"] or 4
             )
 
-            # ROUND ROBIN REAL
+            if pairs_target not in (4, 6, 8):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "El formato debe tener "
+                        "4, 6 u 8 parejas"
+                    ),
+                )
+
+            if len(pairs) != pairs_target:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Este evento requiere exactamente "
+                        f"{pairs_target} parejas. "
+                        f"Actualmente hay {len(pairs)}."
+                    ),
+                )
+
+            # Verificar que ninguna persona esté en dos parejas.
+            cur.execute(
+                """
+                SELECT
+                    player_1_id AS player_id
+                FROM americano_pairs
+                WHERE americano_id = %s
+
+                UNION ALL
+
+                SELECT
+                    player_2_id AS player_id
+                FROM americano_pairs
+                WHERE americano_id = %s;
+                """,
+                (
+                    americano_id,
+                    americano_id,
+                ),
+            )
+
+            player_ids = [
+                row["player_id"]
+                for row in cur.fetchall()
+            ]
+
+            if len(player_ids) != len(set(player_ids)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Un jugador aparece en más "
+                        "de una pareja"
+                    ),
+                )
+
+            courts = int(americano["courts"] or 1)
+
+            if courts < 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Debe existir al menos una cancha"
+                    ),
+                )
+
             pairs_work = pairs.copy()
 
-            # si es impar agregamos descanso
+            # Se mantiene por compatibilidad futura
+            # con cantidades impares.
             if len(pairs_work) % 2 != 0:
                 pairs_work.append(None)
 
-            n = len(pairs_work)
-
-            rounds_needed = n - 1
-            courts = int(americano["courts"])
-            matches_per_round = n // 2
+            participant_slots = len(pairs_work)
+            rounds_needed = participant_slots - 1
+            matches_per_round = participant_slots // 2
 
             recommended_minutes = int(
-                americano["duration_minutes"] / rounds_needed
+                americano["duration_minutes"]
+                / rounds_needed
             )
 
-            rounds = []
-
-            for round_number in range(1, rounds_needed + 1):
-
-                round_matches = []
-
-                for i in range(matches_per_round):
-
-                    pair_a = pairs_work[i]
-                    pair_b = pairs_work[n - 1 - i]
-
-                    # evitar descanso
-                    if pair_a is not None and pair_b is not None:
-                        round_matches.append((pair_a, pair_b))
-
-                rounds.append(round_matches)
-
-                # rotación
-                pairs_work = (
-                    [pairs_work[0]]
-                    + [pairs_work[-1]]
-                    + pairs_work[1:-1]
-                )
-
             matches_created = 0
+            matches_without_court = 0
+            rounds_summary = []
 
-            for round_index, round_matches in enumerate(rounds, start=1):
+            for round_number in range(
+                1,
+                rounds_needed + 1,
+            ):
+                round_matches = 0
+                round_without_court = 0
 
-                for court_index, (pair_a, pair_b) in enumerate(
-                    round_matches,
-                    start=1,
-                ):
+                for index in range(matches_per_round):
+                    pair_a = pairs_work[index]
 
-                    if court_index > courts:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Necesitas al menos {matches_per_round} canchas",
-                        )
+                    pair_b = pairs_work[
+                        participant_slots - 1 - index
+                    ]
 
-                    assigned_court = ((court_index + round_index - 2) % courts) + 1
+                    if pair_a is None or pair_b is None:
+                        continue
+
+                    # Solo se asigna cancha a los partidos
+                    # que caben simultáneamente.
+                    court_number = (
+                        index + 1
+                        if index < courts
+                        else None
+                    )
+
+                    if court_number is None:
+                        matches_without_court += 1
+                        round_without_court += 1
 
                     cur.execute(
                         """
                         INSERT INTO americano_rounds
-                            (americano_id, round_number, court_number)
+                            (
+                                americano_id,
+                                round_number,
+                                court_number
+                            )
                         VALUES
                             (%s, %s, %s)
                         RETURNING id;
                         """,
                         (
                             americano_id,
-                            round_index,
-                            assigned_court,
+                            round_number,
+                            court_number,
                         ),
                     )
 
-                    round_row = cur.fetchone()
-                    round_id = round_row["id"]
+                    round_id = cur.fetchone()["id"]
 
                     cur.execute(
                         """
                         INSERT INTO americano_matches
-                            (round_id, pair_a_id, pair_b_id)
+                            (
+                                round_id,
+                                pair_a_id,
+                                pair_b_id
+                            )
                         VALUES
                             (%s, %s, %s);
                         """,
@@ -1102,28 +1464,65 @@ def generate_americano_rounds(americano_id: int):
                     )
 
                     matches_created += 1
+                    round_matches += 1
+
+                rounds_summary.append(
+                    {
+                        "round_number": round_number,
+                        "matches": round_matches,
+                        "simultaneous_matches": min(
+                            round_matches,
+                            courts,
+                        ),
+                        "matches_without_court": (
+                            round_without_court
+                        ),
+                    }
+                )
+
+                # Circle method.
+                pairs_work = (
+                    [pairs_work[0]]
+                    + [pairs_work[-1]]
+                    + pairs_work[1:-1]
+                )
 
             cur.execute(
                 """
                 UPDATE americano_events
                 SET status = 'scheduled'
-                WHERE id = %s;
+                WHERE id = %s
+                RETURNING *;
                 """,
                 (americano_id,),
             )
 
+            updated = cur.fetchone()
             conn.commit()
+
+            format_names = {
+                4: "cuadrangular",
+                6: "hexagonal",
+                8: "octagonal",
+            }
 
             return {
                 "message": "Rondas generadas",
-                "format": "round_robin",
-                "pairs": len(pairs),
+                "americano": updated,
+                "format": format_names[pairs_target],
+                "pairs": pairs_target,
+                "courts": courts,
                 "matches_created": matches_created,
                 "rounds_created": rounds_needed,
-                "recommended_minutes_per_match": recommended_minutes,
+                "matches_per_round": matches_per_round,
+                "matches_without_court": (
+                    matches_without_court
+                ),
+                "recommended_minutes_per_match": (
+                    recommended_minutes
+                ),
+                "rounds": rounds_summary,
             }
-
-
 
 
 @app.get("/americanos/{americano_id}/matches")

@@ -43,6 +43,7 @@ class AmericanoCreate(BaseModel):
     gender: str
     courts: int
     duration_minutes: int
+    pairs_target: int = 4
 
 class LeagueCreate(BaseModel):
     club_id: int
