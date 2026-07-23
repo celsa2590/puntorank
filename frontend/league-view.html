@@ -294,6 +294,113 @@
       margin-bottom: 18px;
     }
 
+    .pairs-admin-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .pair-admin-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 18px;
+      background: #fff;
+      padding: 16px;
+    }
+
+    .pair-admin-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .pair-admin-title {
+      font-size: 17px;
+      font-weight: 900;
+      color: #111827;
+    }
+
+    .pair-admin-meta {
+      color: #6b7280;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .pair-admin-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .pair-admin-actions button {
+      margin: 0;
+      padding: 9px 12px;
+      font-size: 13px;
+    }
+
+    .danger-button {
+      background: #b91c1c;
+    }
+
+    .danger-button:hover {
+      background: #991b1b;
+    }
+
+    .pair-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 1000;
+    }
+
+    .pair-modal-backdrop.open {
+      display: flex;
+    }
+
+    .pair-modal {
+      width: min(560px, 100%);
+      max-height: 90vh;
+      overflow-y: auto;
+      background: white;
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+    }
+
+    .pair-modal h2 {
+      margin-top: 0;
+    }
+
+    .pair-modal-grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .pair-modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .pair-warning {
+      margin: 14px 0;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: #fff7d6;
+      border: 1px solid #f5df87;
+      color: #7c5b10;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
     @media (max-width: 820px) {
       .league-header {
         flex-direction: column;
@@ -854,6 +961,32 @@
     </div>
   </section>
 
+  <div id="pairEditModal" class="pair-modal-backdrop" onclick="closePairEditModal(event)">
+    <div class="pair-modal" role="dialog" aria-modal="true" aria-labelledby="pairEditTitle">
+      <h2 id="pairEditTitle">Editar pareja</h2>
+      <div id="pairEditWarning" class="pair-warning" style="display:none;"></div>
+      <div class="pair-modal-grid">
+        <div>
+          <label for="editPairPlayer1">Jugador/a 1</label>
+          <select id="editPairPlayer1"></select>
+        </div>
+        <div>
+          <label for="editPairPlayer2">Jugador/a 2</label>
+          <select id="editPairPlayer2"></select>
+        </div>
+        <div>
+          <label for="editPairName">Nombre de la pareja</label>
+          <input id="editPairName" placeholder="Ej: Las Top">
+        </div>
+      </div>
+      <div id="pairEditMessage" class="meta"></div>
+      <div class="pair-modal-actions">
+        <button type="button" class="secondary" onclick="closePairEditModal()">Cancelar</button>
+        <button type="button" onclick="savePairChanges()">Guardar cambios</button>
+      </div>
+    </div>
+  </div>
+
   <section id="tab-summary" class="tab-panel">
     <div class="card">
       <h2>Resumen final</h2>
@@ -877,6 +1010,7 @@ let currentLeague = null;
 let currentPairs = [];
 let currentMatches = [];
 let currentStandings = [];
+let editingPairId = null;
 
 if (!leagueId) {
   alert("Falta id de liga");
@@ -1163,8 +1297,13 @@ async function saveLeagueConfiguration(
 async function loadPairs() {
   const response = await fetch(`${API_URL}/leagues/${leagueId}/pairs`);
   const pairs = await response.json();
-  currentPairs = pairs;
 
+  if (!response.ok) {
+    alert(pairs.detail || "No se pudieron cargar las parejas.");
+    return;
+  }
+
+  currentPairs = pairs;
   const container = document.getElementById("pairsList");
 
   if (pairs.length === 0) {
@@ -1172,12 +1311,149 @@ async function loadPairs() {
     return;
   }
 
-  container.innerHTML = pairs.map((p, index) => `
-    <div class="row">
-      <strong>${index + 1}. ${p.pair_name || `${p.player_1_name} / ${p.player_2_name}`}</strong><br>
-      <span class="meta">${p.player_1_name} / ${p.player_2_name}</span>
+  container.innerHTML = `
+    <div class="pairs-admin-grid">
+      ${pairs.map((p, index) => {
+        const displayName = p.pair_name || `${p.player_1_name} / ${p.player_2_name}`;
+        const completed = Number(p.completed_matches_count || 0);
+        const total = Number(p.matches_count || 0);
+        const deleteDisabled = total > 0;
+
+        return `
+          <article class="pair-admin-card">
+            <div class="pair-admin-header">
+              <div>
+                <div class="pair-admin-title">${index + 1}. ${escapeHtml(displayName)}</div>
+                <div class="pair-admin-meta">${escapeHtml(p.player_1_name)} / ${escapeHtml(p.player_2_name)}</div>
+              </div>
+            </div>
+            <div class="pair-admin-meta">
+              Partidos: ${total} · Completados: ${completed}
+            </div>
+            <div class="pair-admin-actions">
+              <button type="button" onclick="openPairEditModal(${p.id})">✏ Editar</button>
+              <button
+                type="button"
+                class="danger-button"
+                onclick="deletePair(${p.id})"
+                ${deleteDisabled ? "disabled" : ""}
+                title="${deleteDisabled ? "No se puede eliminar porque forma parte del fixture" : "Eliminar pareja"}"
+              >
+                🗑 Eliminar
+              </button>
+            </div>
+          </article>
+        `;
+      }).join("")}
     </div>
+  `;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function playerOptions(selectedId) {
+  return players.map(player => `
+    <option value="${player.id}" ${Number(player.id) === Number(selectedId) ? "selected" : ""}>
+      ${escapeHtml(player.name)}
+    </option>
   `).join("");
+}
+
+function openPairEditModal(pairId) {
+  const pair = currentPairs.find(item => Number(item.id) === Number(pairId));
+  if (!pair) return;
+
+  editingPairId = pair.id;
+  document.getElementById("editPairPlayer1").innerHTML = playerOptions(pair.player_1_id);
+  document.getElementById("editPairPlayer2").innerHTML = playerOptions(pair.player_2_id);
+  document.getElementById("editPairName").value = pair.pair_name || "";
+  document.getElementById("pairEditMessage").textContent = "";
+
+  const completed = Number(pair.completed_matches_count || 0);
+  const warning = document.getElementById("pairEditWarning");
+
+  if (completed > 0) {
+    warning.style.display = "block";
+    warning.textContent = `Esta pareja tiene ${completed} partido(s) completado(s). Por seguridad no podrás cambiar sus integrantes; solo el nombre.`;
+    document.getElementById("editPairPlayer1").disabled = true;
+    document.getElementById("editPairPlayer2").disabled = true;
+  } else {
+    warning.style.display = "block";
+    warning.textContent = "El cambio actualizará automáticamente todos los partidos pendientes del fixture.";
+    document.getElementById("editPairPlayer1").disabled = false;
+    document.getElementById("editPairPlayer2").disabled = false;
+  }
+
+  document.getElementById("pairEditModal").classList.add("open");
+}
+
+function closePairEditModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  document.getElementById("pairEditModal").classList.remove("open");
+  editingPairId = null;
+}
+
+async function savePairChanges() {
+  if (!editingPairId) return;
+
+  const player1 = Number(document.getElementById("editPairPlayer1").value);
+  const player2 = Number(document.getElementById("editPairPlayer2").value);
+  const pairName = document.getElementById("editPairName").value.trim();
+  const message = document.getElementById("pairEditMessage");
+
+  if (player1 === player2) {
+    message.textContent = "No puedes seleccionar a la misma persona dos veces.";
+    return;
+  }
+
+  const response = await fetch(`${API_URL}/leagues/${leagueId}/pairs/${editingPairId}`, {
+    method: "PATCH",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      player_1_id: player1,
+      player_2_id: player2,
+      pair_name: pairName || null
+    })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    message.textContent = result.detail || "No se pudo actualizar la pareja.";
+    return;
+  }
+
+  closePairEditModal();
+  await refreshAll();
+  alert("✅ Pareja actualizada correctamente.");
+}
+
+async function deletePair(pairId) {
+  const pair = currentPairs.find(item => Number(item.id) === Number(pairId));
+  if (!pair) return;
+
+  const name = pair.pair_name || `${pair.player_1_name} / ${pair.player_2_name}`;
+  if (!confirm(`¿Eliminar la pareja ${name}?`)) return;
+
+  const response = await fetch(`${API_URL}/leagues/${leagueId}/pairs/${pairId}`, {
+    method: "DELETE"
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    alert(result.detail || "No se pudo eliminar la pareja.");
+    return;
+  }
+
+  await refreshAll();
 }
 
 async function generateFixture() {
